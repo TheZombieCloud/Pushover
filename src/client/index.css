@@ -1,0 +1,725 @@
+@import 'tailwindcss';
+
+/*
+ * Pushover's UI lives inside the picture. The scene canvas fills the screen and
+ * everything here is laid out in art pixels: --px is how many CSS pixels one art
+ * pixel takes (set by useViewport), and every size below is a whole multiple of it.
+ * Tiny5 and Silkscreen are bitmap faces with 8 pixels to the em, so at 8 art pixels
+ * per em each font pixel is exactly one art pixel. Double size is 16.
+ *
+ * Text colours pass WCAG AA: --ink and --ink-soft on paper, --cream on wood and
+ * on the outlined sky text.
+ */
+:root {
+  --px: 2px;
+  --ink: #2a1630;
+  --ink-soft: #6b3d3a;
+  --paper: #fbe9c6;
+  --paper-lo: #ecd3a4;
+  --cream: #fff3e3;
+  --gold: #ffcd3c;
+  --gold-lo: #d4902a;
+  --wood: #96593f;
+  --wood-lo: #6b3d3a;
+  --red: #b02a4a;
+  --night: #1d1236;
+  --text: 'Tiny5', ui-monospace, monospace;
+  --label: 'Silkscreen', 'Tiny5', ui-monospace, monospace;
+  --u: var(--px);
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--night);
+  color: var(--cream);
+  font: calc(8 * var(--u)) / calc(10 * var(--u)) var(--text);
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
+  overscroll-behavior: none;
+  overflow: hidden;
+}
+#root {
+  height: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+button:disabled {
+  cursor: default;
+}
+button:focus-visible {
+  outline: var(--u) solid var(--gold);
+  outline-offset: var(--u);
+}
+img.px {
+  image-rendering: pixelated;
+  display: block;
+}
+
+/* Cream text with a one-pixel ink outline, for text sitting on the sky. */
+.outlined {
+  color: var(--cream);
+  text-shadow:
+    var(--u) 0 var(--ink),
+    calc(-1 * var(--u)) 0 var(--ink),
+    0 var(--u) var(--ink),
+    0 calc(-1 * var(--u)) var(--ink),
+    var(--u) var(--u) var(--ink),
+    calc(-1 * var(--u)) var(--u) var(--ink),
+    var(--u) calc(-1 * var(--u)) var(--ink),
+    calc(-1 * var(--u)) calc(-1 * var(--u)) var(--ink);
+}
+
+/* ---- nine-slice pieces ---- */
+.nine {
+  border: calc(4 * var(--u)) solid transparent;
+  border-image-slice: 4 fill;
+  border-image-width: calc(4 * var(--u));
+  border-image-repeat: stretch;
+  image-rendering: pixelated;
+  box-sizing: border-box;
+}
+.panel {
+  border-image-source: var(--img-panel);
+  color: var(--ink);
+}
+.btn {
+  border-image-source: var(--img-wood);
+  color: var(--cream);
+  font-family: var(--label);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(2 * var(--u));
+  min-height: calc(18 * var(--u));
+  padding: 0 calc(2 * var(--u)) calc(1 * var(--u));
+  text-shadow: 0 var(--u) var(--wood-lo);
+}
+.btn:active:not(:disabled) {
+  border-image-source: var(--img-wood-down);
+  padding-top: calc(1 * var(--u));
+  padding-bottom: 0;
+}
+.btn.gold {
+  border-image-source: var(--img-gold);
+  color: var(--ink);
+  text-shadow: 0 var(--u) #fff3a8;
+}
+.btn.gold:active:not(:disabled) {
+  border-image-source: var(--img-gold-down);
+}
+.btn.grass {
+  border-image-source: var(--img-grass);
+  color: #12331f;
+  text-shadow: 0 var(--u) #b6f07a;
+}
+.btn.grass:active:not(:disabled) {
+  border-image-source: var(--img-grass-down);
+}
+.btn:disabled {
+  filter: saturate(0.25) brightness(0.8);
+}
+.btn.big {
+  font-size: calc(16 * var(--u));
+  line-height: calc(16 * var(--u));
+  min-height: calc(26 * var(--u));
+  width: 100%;
+  flex-direction: column;
+  gap: 0;
+  text-shadow: 0 calc(2 * var(--u)) #fff3a8;
+}
+.btn.big.gold {
+  color: var(--ink);
+}
+.btn.big.wood-big {
+  color: var(--cream);
+  text-shadow: 0 calc(2 * var(--u)) var(--wood-lo);
+}
+.btn .sub {
+  font: calc(8 * var(--u)) / calc(8 * var(--u)) var(--text);
+  text-transform: none;
+  text-shadow: none;
+  opacity: 0.85;
+}
+.btn.square {
+  width: calc(18 * var(--u));
+  padding: 0 0 var(--u);
+}
+.btn.wide {
+  flex: 1;
+}
+/* The push button with the speed button beside it. */
+.push-row {
+  display: flex;
+  gap: calc(3 * var(--u));
+}
+.push-row .btn.big {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.btn.speed {
+  width: calc(24 * var(--u));
+  min-height: calc(26 * var(--u));
+  padding: 0 0 var(--u);
+}
+
+/* The editor: one button per slime, to pick whose move the aim sets. */
+.chips {
+  display: flex;
+  justify-content: center;
+  gap: calc(2 * var(--u));
+}
+.chip {
+  width: calc(22 * var(--u));
+  height: calc(20 * var(--u));
+  display: grid;
+  place-items: center;
+  background: rgba(42, 22, 48, 0.55);
+  box-shadow: 0 0 0 var(--u) var(--ink);
+}
+.chip img {
+  width: calc(16 * var(--u));
+}
+.chip.on {
+  background: var(--gold);
+  box-shadow:
+    0 0 0 var(--u) var(--ink),
+    inset 0 calc(-2 * var(--u)) 0 var(--gold-lo);
+}
+.chip:disabled {
+  opacity: 0.5;
+}
+
+/* The editor's build screen. */
+.tools {
+  display: flex;
+  justify-content: space-between;
+  gap: calc(2 * var(--u));
+}
+.tool {
+  flex: 1;
+  min-height: calc(24 * var(--u));
+  padding: 0 0 var(--u);
+}
+.tool img {
+  max-height: calc(16 * var(--u));
+}
+.tool.on {
+  border-image-source: var(--img-gold);
+}
+.options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(3 * var(--u));
+}
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: calc(3 * var(--u));
+  font-family: var(--label);
+  text-transform: uppercase;
+}
+.stepper b {
+  min-width: calc(6 * var(--u));
+  text-align: center;
+  font-weight: 400;
+}
+
+/* ---- the play screen ---- */
+.play {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: var(--night);
+}
+.scene {
+  position: absolute;
+  left: 0;
+  top: 0;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  touch-action: none;
+  display: block;
+}
+.col {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  max-width: calc(192 * var(--u));
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+  padding: calc(4 * var(--u)) calc(5 * var(--u)) calc(5 * var(--u));
+  box-sizing: border-box;
+}
+.col > * {
+  pointer-events: auto;
+}
+.hud {
+  display: flex;
+  align-items: center;
+  gap: calc(3 * var(--u));
+  height: calc(18 * var(--u));
+}
+.turns {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--u));
+  font-family: var(--label);
+}
+.turns .lbl {
+  margin-right: var(--u);
+}
+.pip {
+  width: calc(5 * var(--u));
+  height: calc(5 * var(--u));
+  background: var(--night);
+  box-shadow:
+    0 0 0 var(--u) var(--ink),
+    inset 0 0 0 var(--u) #73306b;
+}
+.pip.done {
+  background: var(--cream);
+  box-shadow: 0 0 0 var(--u) var(--ink);
+}
+.pip.now {
+  background: var(--gold);
+  box-shadow:
+    0 0 0 var(--u) var(--ink),
+    inset 0 calc(-1 * var(--u)) 0 var(--gold-lo);
+  animation: bob 0.8s steps(2) infinite;
+}
+@keyframes bob {
+  50% {
+    transform: translateY(calc(-1 * var(--u)));
+  }
+}
+.foes {
+  display: flex;
+  margin-left: auto;
+}
+.foes img {
+  width: calc(16 * var(--u));
+  height: calc(14 * var(--u));
+  margin-left: calc(-3 * var(--u));
+}
+.hud-actions {
+  display: flex;
+  gap: calc(2 * var(--u));
+}
+.spacer {
+  flex: 1;
+  pointer-events: none;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4 * var(--u));
+}
+.hint {
+  margin: 0;
+  min-height: calc(20 * var(--u));
+  text-align: center;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.aim-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.power {
+  display: flex;
+  align-items: center;
+  gap: calc(3 * var(--u));
+}
+.meter {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--u);
+  height: calc(12 * var(--u));
+  padding: calc(2 * var(--u));
+  background: var(--ink);
+}
+.bar {
+  width: calc(3 * var(--u));
+  background: #542662;
+}
+.bar.on {
+  background: var(--gold);
+  box-shadow: inset 0 calc(-1 * var(--u)) 0 var(--gold-lo);
+}
+
+/* ---- sheets over the scene ---- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  padding: calc(24 * var(--u)) calc(5 * var(--u)) calc(5 * var(--u));
+  box-sizing: border-box;
+}
+.sheet {
+  width: 100%;
+  max-width: calc(182 * var(--u));
+  max-height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: calc(4 * var(--u)) calc(5 * var(--u)) calc(5 * var(--u));
+  display: flex;
+  flex-direction: column;
+  gap: calc(5 * var(--u));
+  background-clip: padding-box;
+}
+.sheet::-webkit-scrollbar {
+  display: none;
+}
+.sheet h2,
+.sheet h1,
+.sheet p {
+  margin: 0;
+}
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.logo {
+  font: 700 calc(24 * var(--u)) / calc(24 * var(--u)) var(--label);
+  text-transform: uppercase;
+  color: var(--gold);
+  text-align: center;
+  text-shadow:
+    var(--u) 0 var(--ink),
+    calc(-1 * var(--u)) 0 var(--ink),
+    0 calc(-1 * var(--u)) var(--ink),
+    var(--u) calc(-1 * var(--u)) var(--ink),
+    calc(-1 * var(--u)) calc(-1 * var(--u)) var(--ink),
+    0 calc(3 * var(--u)) var(--gold-lo),
+    var(--u) calc(3 * var(--u)) var(--ink),
+    calc(-1 * var(--u)) calc(3 * var(--u)) var(--ink),
+    0 calc(4 * var(--u)) var(--ink),
+    var(--u) calc(4 * var(--u)) var(--ink),
+    calc(-1 * var(--u)) calc(4 * var(--u)) var(--ink);
+  padding-bottom: calc(4 * var(--u));
+}
+.logo.small {
+  font-size: calc(16 * var(--u));
+  line-height: calc(16 * var(--u));
+}
+.kicker {
+  font-family: var(--label);
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--red);
+}
+.headline {
+  font: 700 calc(16 * var(--u)) / calc(18 * var(--u)) var(--label);
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--ink);
+}
+.goal {
+  text-align: center;
+  font-size: calc(16 * var(--u));
+  line-height: calc(18 * var(--u));
+}
+.goal b,
+.em {
+  color: var(--red);
+  font-weight: 400;
+}
+.soft {
+  color: var(--ink-soft);
+  text-align: center;
+}
+.center-text {
+  text-align: center;
+}
+.pips {
+  display: flex;
+  justify-content: center;
+  gap: var(--u);
+}
+.pips img {
+  width: calc(16 * var(--u));
+  height: calc(14 * var(--u));
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: calc(2 * var(--u));
+}
+.stats div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: calc(2 * var(--u)) 0;
+  background: var(--paper-lo);
+  box-shadow:
+    inset 0 var(--u) 0 #d9b987,
+    0 0 0 var(--u) var(--ink);
+}
+.stats b {
+  font: 700 calc(16 * var(--u)) / calc(16 * var(--u)) var(--label);
+  color: var(--ink);
+}
+.stats span {
+  color: var(--ink-soft);
+}
+.row {
+  display: flex;
+  gap: calc(3 * var(--u));
+}
+
+.dist {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--u));
+}
+.dist-title {
+  font-family: var(--label);
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.dist-row {
+  display: flex;
+  align-items: center;
+  gap: calc(3 * var(--u));
+}
+.dist-k {
+  width: calc(5 * var(--u));
+  text-align: right;
+}
+.dist-bar {
+  background: var(--wood);
+  color: var(--cream);
+  height: calc(10 * var(--u));
+  padding: 0 calc(2 * var(--u));
+  text-align: right;
+  box-sizing: border-box;
+  box-shadow:
+    0 0 0 var(--u) var(--ink),
+    inset 0 calc(-2 * var(--u)) 0 var(--wood-lo);
+  min-width: calc(3 * var(--u));
+}
+.dist-row.me .dist-bar {
+  background: var(--gold);
+  color: var(--ink);
+  box-shadow:
+    0 0 0 var(--u) var(--ink),
+    inset 0 calc(-2 * var(--u)) 0 var(--gold-lo);
+}
+
+/* Player-made islands on the results sheet. */
+.islands {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--u));
+}
+.island-link {
+  display: flex;
+  justify-content: space-between;
+  gap: calc(3 * var(--u));
+  padding: calc(2 * var(--u)) calc(3 * var(--u));
+  background: var(--paper-lo);
+  box-shadow: 0 0 0 var(--u) var(--ink);
+  color: var(--ink);
+  text-align: left;
+}
+.island-link span:last-child {
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.twist {
+  text-align: center;
+  color: var(--red);
+}
+
+.lb-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--u);
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--u));
+}
+.lb-list li {
+  display: flex;
+  align-items: center;
+  gap: calc(3 * var(--u));
+  padding: calc(2 * var(--u)) calc(3 * var(--u));
+  background: var(--paper-lo);
+  box-shadow: 0 0 0 var(--u) var(--ink);
+}
+.lb-list li.me {
+  background: var(--gold);
+}
+.lb-rank {
+  width: calc(10 * var(--u));
+  text-align: right;
+  font-family: var(--label);
+}
+/* Avatars are photos, not pixel art: scale them smoothly inside a pixel frame. */
+.lb-av {
+  flex: none;
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  object-fit: cover;
+  image-rendering: auto;
+  background: var(--paper);
+  box-shadow: 0 0 0 var(--u) var(--ink);
+}
+/* A Snoovatar is a tall full-body cutout: show the head and shoulders. */
+.lb-av.snoo {
+  object-position: center top;
+}
+.lb-av.initial {
+  display: grid;
+  place-items: center;
+  font-family: var(--label);
+  background: var(--wood);
+  color: var(--paper);
+}
+.lb-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lb-score {
+  font: 700 calc(8 * var(--u)) / 1 var(--label);
+}
+.lb-runs {
+  color: var(--ink-soft);
+  width: calc(28 * var(--u));
+  text-align: right;
+}
+
+.screen-msg {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: calc(8 * var(--u));
+  box-sizing: border-box;
+}
+
+/* ---- feed card ---- */
+.splash-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(3 * var(--u));
+  padding-top: calc(2 * var(--u));
+}
+.splash-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: calc(3 * var(--u));
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pip.now {
+    animation: none;
+  }
+}
+
+.overlay.title {
+  justify-content: space-between;
+  padding-top: calc(4 * var(--u));
+}
+
+/* ---- wide windows: island on the left, controls in a panel on the right ---- */
+.play.wide .col {
+  max-width: none;
+  flex-direction: row;
+  align-items: stretch;
+  padding: calc(4 * var(--u)) calc(6 * var(--u));
+}
+.play.wide .hud {
+  flex: 1;
+  max-width: calc(182 * var(--u));
+  margin: 0 auto;
+  align-self: flex-start;
+}
+.play.wide .spacer {
+  display: none;
+}
+.play.wide .controls {
+  width: calc(144 * var(--u));
+  align-self: center;
+  flex: none;
+}
+/* Sheets (title, results) take the side panel's place, so the island stays in view. */
+.play.wide .overlay {
+  align-items: flex-end;
+  justify-content: center;
+  padding: calc(6 * var(--u));
+}
+.play.wide .overlay .sheet {
+  max-width: calc(150 * var(--u));
+}
+.play.wide .overlay.title {
+  justify-content: center;
+  gap: calc(6 * var(--u));
+}
+.play.wide .overlay.title .splash-top {
+  align-self: flex-end;
+  width: calc(150 * var(--u));
+}
+
+/* ---- who's who: one row per kind of foe ---- */
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(4 * var(--u));
+}
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--u));
+  color: var(--ink-soft);
+}
+.legend img {
+  width: calc(16 * var(--u));
+  flex: none;
+}
+.legend b {
+  color: var(--ink);
+}
+
+/* ---- the feed card ---- */
+/* The card sits in Reddit's feed, so a finger that lands on it has to be able to
+   scroll the feed: nothing here may claim the touch. Only the button is tappable. */
+html.card,
+html.card body {
+  overscroll-behavior: auto;
+  touch-action: auto;
+}
+html.card .scene {
+  touch-action: auto;
+  pointer-events: none;
+}

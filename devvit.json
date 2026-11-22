@@ -1,0 +1,103 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "pushover-game",
+  "post": {
+    "dir": "dist/client",
+    "entrypoints": {
+      "default": {
+        "inline": true,
+        "entry": "splash.html"
+      },
+      "game": {
+        "entry": "game.html"
+      }
+    }
+  },
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.cjs"
+  },
+  "permissions": {
+    "redis": true,
+    "journeys": true,
+    "reddit": {
+      "enable": true,
+      "scope": "user",
+      "asUser": [
+        "SUBMIT_COMMENT",
+        "SUBSCRIBE_TO_SUBREDDIT"
+      ]
+    }
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Pushover: post today's island",
+        "description": "Create today's daily Pushover post",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/post-daily"
+      },
+      {
+        "label": "Pushover: re-roll today's island",
+        "description": "Replace today's island with a fresh one and post it (best before many have played)",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/reroll-today"
+      },
+      {
+        "label": "Pushover: post a test island",
+        "description": "Random island with its own leaderboard",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/post-test"
+      },
+      {
+        "label": "Pushover: reset my runs here (testing)",
+        "description": "Forget your runs on this post so it plays fresh",
+        "location": "post",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/reset-me"
+      },
+      {
+        "label": "Pushover: stats for this island",
+        "description": "Views, runs, falls and how many players cleared it",
+        "location": "post",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/island-stats"
+      },
+      {
+        "label": "Pushover: delete my data",
+        "description": "Remove your runs, scores, streak and streak flair",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/delete-my-data"
+      }
+    ]
+  },
+  "forms": {
+    "deleteMyData": "/internal/form/delete-my-data",
+    "islandStats": "/internal/form/island-stats"
+  },
+  "scheduler": {
+    "tasks": {
+      "daily-post": {
+        "endpoint": "/internal/scheduler/daily-post",
+        "cron": "0 0 * * *"
+      },
+      "daily-post-check": {
+        "endpoint": "/internal/scheduler/daily-post",
+        "cron": "*/15 * * * *"
+      }
+    }
+  },
+  "triggers": {
+    "onAppInstall": "/internal/triggers/on-app-install"
+  },
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build"
+  },
+  "dev": {
+    "subreddit": "PushoverGame"
+  }
+}
