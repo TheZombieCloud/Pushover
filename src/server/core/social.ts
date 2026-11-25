@@ -27,6 +27,22 @@ export const follow = async (username: string): Promise<boolean> => {
 
 export const streakFlairText = (streak: number): string => `Pushover · ${streak}-day streak`;
 
+/** Remove the streak flair, only if it is still the one Pushover set. */
+export const removeStreakFlair = async (username: string): Promise<void> => {
+  const ours = await redis.hGet('flair:ours', username);
+  const subredditName = context.subredditName;
+  if (ours && subredditName) {
+    try {
+      const sub = await reddit.getCurrentSubreddit();
+      const current = (await sub.getUserFlair({ usernames: [username] })).users[0]?.flairText ?? '';
+      if (current === ours) await reddit.removeUserFlair(subredditName, username);
+    } catch (error) {
+      console.warn('flair removal failed', error);
+    }
+  }
+  await redis.hDel('flair:ours', [username]);
+};
+
 export const updateStreakFlair = async (username: string, streak: number): Promise<void> => {
   const subredditName = context.subredditName;
   if (!subredditName || streak < 1) return;

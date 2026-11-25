@@ -3,7 +3,7 @@ import type { UiResponse } from '@devvit/web/shared';
 import { context, reddit, redis } from '@devvit/web/server';
 import { getPuzzle, puzzleIdForPost, resetMine, todayId } from '../core/game';
 import { islandReport, statKeys } from '../core/stats';
-import { createDailyPost, createTestPost } from '../core/post';
+import { backfillScoreThreads, createDailyPost, createTestPost } from '../core/post';
 
 export const menu = new Hono();
 
@@ -27,6 +27,23 @@ menu.post('/post-test', async (c) => {
   } catch (error) {
     console.error('post-test failed', error);
     return c.json<UiResponse>({ showToast: 'Failed to create post' }, 400);
+  }
+});
+
+// Mods only: give older Pushover posts the stickied scores comment that new posts get
+// when they are made. Safe to run more than once.
+menu.post('/backfill-scores', async (c) => {
+  const subredditName = context.subredditName;
+  if (!subredditName) return c.json<UiResponse>({ showToast: 'Open this from the community menu' }, 400);
+  try {
+    const { added, had, more } = await backfillScoreThreads(subredditName);
+    const text = more
+      ? `Added the scores comment to ${added} posts. There are more: run this again.`
+      : `Added the scores comment to ${added} ${added === 1 ? 'post' : 'posts'}. ${had} already had one.`;
+    return c.json<UiResponse>({ showToast: { text, appearance: 'success' } });
+  } catch (error) {
+    console.error('backfill-scores failed', error);
+    return c.json<UiResponse>({ showToast: 'Couldn’t finish. Run it again' }, 400);
   }
 });
 

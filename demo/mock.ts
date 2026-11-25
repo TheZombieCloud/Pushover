@@ -191,8 +191,18 @@ const solveDraft = (draft: Draft): { moves: Move[]; outs: number } => {
     ...(draft.rocks.length ? { rocks: draft.rocks } : {}),
     ...(draft.ice ? { ice: true } : {}),
   };
-  const best = solve(level);
-  return { moves: best.moves, outs: best.score };
+  // The maker may not fall in their own run, so take the best line that stays on the
+  // island; failing that, the best line cut short just before the fall.
+  const lines = [solve(level), solve(level, 32, 1), solve(level, 8, 3)].map((s) => s.moves);
+  for (const moves of [...lines]) {
+    for (let cut = moves.length - 1; cut >= 0; cut--) lines.push(moves.map((m, i) => (i < cut ? m : STAY)));
+  }
+  let best: { moves: Move[]; outs: number } = { moves: [], outs: 0 };
+  for (const moves of lines) {
+    const r = runLevel(level, moves);
+    if (!r.fell && r.score > best.outs) best = { moves, outs: r.score };
+  }
+  return best;
 };
 
 /** For the recorder: a first move that ends with you down a hole in the island, if it has one. */

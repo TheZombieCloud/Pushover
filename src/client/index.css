@@ -146,6 +146,12 @@ img.px {
   color: var(--cream);
   text-shadow: 0 calc(2 * var(--u)) var(--wood-lo);
 }
+.btn.stack {
+  flex: none;
+  flex-direction: column;
+  gap: calc(1 * var(--u));
+  min-height: calc(26 * var(--u));
+}
 .btn .sub {
   font: calc(8 * var(--u)) / calc(8 * var(--u)) var(--text);
   text-transform: none;
@@ -592,12 +598,10 @@ img.px {
 .lb-av.snoo {
   object-position: center top;
 }
-.lb-av.initial {
-  display: grid;
-  place-items: center;
-  font-family: var(--label);
-  background: var(--wood);
-  color: var(--paper);
+/* No avatar: one of the game's own slimes, which is pixel art. */
+.lb-av.pip {
+  object-fit: contain;
+  image-rendering: pixelated;
 }
 .lb-name {
   flex: 1;

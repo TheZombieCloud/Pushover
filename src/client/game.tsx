@@ -74,21 +74,14 @@ const FirstTries = ({ counts, mine, foes }: { counts: number[]; mine: number; fo
   );
 };
 
-/** One of Reddit's eight default avatars, always the same one for a given name. */
-const defaultAvatar = (name: string) => {
-  const n = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 8;
-  return `https://www.redditstatic.com/avatars/defaults/v2/avatar_default_${n}.png`;
-};
-
-/** Their Snoovatar, else a Reddit default avatar; their initial only if images won't load at all. */
+/** Their own avatar, else one of the game's slimes (always the same one for a given name). */
 const Avatar = ({ name, url }: { name: string; url: string | null }) => {
   const [broken, setBroken] = useState(false);
-  return broken ? (
-    <span className="lb-av initial" aria-hidden="true">
-      {name.charAt(0).toUpperCase()}
-    </span>
+  const slime = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+  return url && !broken ? (
+    <img className="lb-av snoo" src={url} alt="" onError={() => setBroken(true)} />
   ) : (
-    <img className={`lb-av${url ? ' snoo' : ''}`} src={url ?? defaultAvatar(name)} alt="" onError={() => setBroken(true)} />
+    <img className="lb-av pip" src={foePip(slime, false)} alt="" />
   );
 };
 
@@ -192,7 +185,7 @@ const Results = ({
     try {
       await call<ShareResponse>('share', {});
       setShared(true);
-      showToast({ text: 'Posted to the comments', appearance: 'success' });
+      showToast({ text: 'Commented from your account', appearance: 'success' });
     } catch (e) {
       showToast((e as Error).message);
     }
@@ -254,9 +247,6 @@ const Results = ({
         {!perfect && <span className="sub">Go for all {foes}</span>}
       </button>
       <div className="row">
-        <button className="nine btn wide" onClick={share} disabled={shared}>
-          {shared ? 'Shared' : 'Share'}
-        </button>
         <button
           className="nine btn wide"
           onClick={() => {
@@ -276,6 +266,11 @@ const Results = ({
           Replay
         </button>
       </div>
+
+      <button className="nine btn stack" onClick={share} disabled={shared}>
+        {shared ? 'Score commented' : 'Comment my score'}
+        {!shared && <span className="sub">from your account, in the scores thread</span>}
+      </button>
 
       <FirstTries counts={standing.firstTries} mine={mine.firstTry} foes={foes} />
       <Islands onBuild={onBuild} />
@@ -326,7 +321,21 @@ const Title = ({ init, onStart }: { init: InitResponse; onStart: () => void }) =
 };
 
 /** The editor's last step: you played your island through; post it, or change it. */
-const PostSheet = ({ made, posting, onPost, onMoves, onIsland }: { made: Made; posting: boolean; onPost: () => void; onMoves: () => void; onIsland: () => void }) => {
+const PostSheet = ({
+  made,
+  by,
+  posting,
+  onPost,
+  onMoves,
+  onIsland,
+}: {
+  made: Made;
+  by: string | null;
+  posting: boolean;
+  onPost: () => void;
+  onMoves: () => void;
+  onIsland: () => void;
+}) => {
   const foes = made.level.foes.length;
   return (
     <div className="nine panel sheet">
@@ -337,7 +346,7 @@ const PostSheet = ({ made, posting, onPost, onMoves, onIsland }: { made: Made; p
       {!made.problem && (
         <button className="nine btn gold big" onClick={onPost} disabled={posting}>
           {posting ? 'Posting…' : 'Post island'}
-          <span className="sub">as a new post in this community</span>
+          <span className="sub">a new post from your account{by ? ` (u/${by})` : ''}</span>
         </button>
       )}
       <div className="row">
@@ -514,7 +523,7 @@ export const App = () => {
       <Play key={`author-${runKey}`} level={authorLevel} onDone={onAuthored} onClose={() => setScreen('build')} active={screen === 'author'}>
         {screen === 'post' && made && (
           <div className="overlay">
-            <PostSheet made={made} posting={posting} onPost={post} onMoves={() => restart('author')} onIsland={() => setScreen('build')} />
+            <PostSheet made={made} by={init.username} posting={posting} onPost={post} onMoves={() => restart('author')} onIsland={() => setScreen('build')} />
           </div>
         )}
       </Play>

@@ -24,6 +24,7 @@
       "enable": true,
       "scope": "user",
       "asUser": [
+        "SUBMIT_POST",
         "SUBMIT_COMMENT",
         "SUBSCRIBE_TO_SUBREDDIT"
       ]
@@ -51,6 +52,13 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/post-test"
+      },
+      {
+        "label": "Pushover: add scores comment to old posts",
+        "description": "Gives older Pushover posts the stickied comment that score comments reply to",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/backfill-scores"
       },
       {
         "label": "Pushover: reset my runs here (testing)",
@@ -91,7 +99,8 @@
     }
   },
   "triggers": {
-    "onAppInstall": "/internal/triggers/on-app-install"
+    "onAppInstall": "/internal/triggers/on-app-install",
+    "onPostDelete": "/internal/triggers/on-post-delete"
   },
   "scripts": {
     "dev": "vite build --watch",

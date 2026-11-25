@@ -23,6 +23,7 @@ Aim is free: drag anywhere from your slime for any of 72 directions and 6 streng
 - **Unlimited runs.** Your best run counts, with fewer runs to reach it as the tiebreak. Your first finished run is kept separately ("first try"), and the results sheet shows how everyone's first try went. There is no undo and no restart: every push is final, and a run counts once it's finished. To make that fair, nothing is hidden: each foe's arrow shows this turn's move, and its later moves follow from its kind.
 - **Replay.** The results sheet can play your best run back.
 - **Streaks and flair.** Finishing a run on the day's island extends your streak, shown as "Pushover · N-day streak" user flair. Flair is only set over no flair or flair Pushover set itself.
+- **Score comments.** "Comment my score" posts from the player's own account as a reply to the one stickied scores comment the app keeps on each post (`scoreThread` in `src/server/core/post.ts`). It is never posted from the app account.
 
 ## Player-made islands
 
@@ -30,7 +31,7 @@ From the results sheet, anyone can build an island and post it as a new post in 
 
 1. **Build** (`src/client/build.tsx`): paint grass or cut it away, drag your slime, tap to add foes and boulders, tap a foe to change its kind, switch between grass and ice, pick 2 to 4 turns, or shuffle for a new random island. The foes' arrows show what each would do on turn 1 as things stand. Every tool refuses a change that would leave something off the grass or overlapping, so a draft is always a valid layout.
 2. **Play it through.** The maker plays the island like anyone else. Their moves are the proof that it can be beaten, and players then try to push every foe off.
-3. **Post.** The server checks the island again with the same shared rules (`src/shared/validate.ts`) before it creates the post: the layout is valid, every foe has a kind, the maker's line replays to a finished run, the maker didn't fall, at least one foe was pushed off, and standing still all game scores less than the maker did. Five islands per player per day.
+3. **Post.** The island is posted from the maker's own account (`runAs: 'USER'`), and deleting the post deletes the island and its records (`forgetPost`). The server checks the island again with the same shared rules (`src/shared/validate.ts`) before it creates the post: the layout is valid, every foe has a kind, the maker's line replays to a finished run, the maker didn't fall, at least one foe was pushed off, and standing still all game scores less than the maker did. Five islands per player per day.
 
 The newest player-made islands are listed on every results sheet.
 

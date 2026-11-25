@@ -24,6 +24,8 @@ import { DAY_MS, dailyNumber, isDailyId, todayId } from './days';
  *   island:{postId}    hash    url, by, foes, turns, twist
  *   made:{day}:{user}  string  islands this player has posted today
  *
+ * When a post is deleted or removed, forgetPost drops what was stored for it.
+ *
  * A "run" is one finished attempt: every turn played, or you fell, or no foes left.
  * Runs are replayed here with the shared simulation, so a score can't be made up.
  */
@@ -185,6 +187,21 @@ export const latestIslands = async (exceptPostId: string | undefined, count = 3)
     links.push({ url: h.url, by: h.by, foes: Number(h.foes ?? 0), turns: Number(h.turns ?? 0), twist: h.twist || null });
   }
   return links;
+};
+
+/**
+ * A post was deleted or removed: drop what is stored for it. A player-made island is
+ * that player's content, so the island, its leaderboard and every run on it go too.
+ * Daily and test islands are the app's own and keep their records.
+ */
+export const forgetPost = async (postId: string): Promise<void> => {
+  const pid = await redis.get(`post:${postId}`);
+  await redis.zRem('islands', [postId]);
+  await redis.del(`island:${postId}`, `sticky:${postId}`);
+  if (!pid || !pid.startsWith('u-')) return;
+  const players = await redis.zRange(`lb:${pid}`, 0, -1, { by: 'rank' });
+  for (const p of players) await redis.del(meKey(pid, p.member));
+  await redis.del(`puzzle:${pid}`, `lb:${pid}`, `first:${pid}`, `stats:${pid}`, `post:${postId}`);
 };
 
 /** Testing aid for mods: forget a user's record on a puzzle. */

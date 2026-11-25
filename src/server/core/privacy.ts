@@ -1,6 +1,7 @@
-import { context, reddit, redis } from '@devvit/web/server';
+import { redis } from '@devvit/web/server';
 import { dayAfter, firstDay, todayId } from './days';
 import { resetMine } from './game';
+import { removeStreakFlair } from './social';
 
 /*
  * "Delete my data": everything this subreddit's Pushover stores about one player.
@@ -11,8 +12,9 @@ import { resetMine } from './game';
  *   their user flair, only if it's the streak flair Pushover set
  *
  * Left alone: records on test posts and on player-made islands (their ids can't be
- * listed), and islands the player posted, which are posts in the community credited
- * to them by name: a moderator can remove those. Their comments are theirs.
+ * listed). Islands the player posted and their score comments are their own posts and
+ * comments on Reddit, which they delete there; deleting an island post also deletes
+ * the island and its records here (forgetPost in game.ts).
  */
 
 const MAX_DAYS = 1000;
@@ -23,19 +25,7 @@ export const deleteUserData = async (user: string): Promise<void> => {
     await resetMine(day, user);
   }
 
-  const ours = await redis.hGet('flair:ours', user);
-  const subredditName = context.subredditName;
-  if (ours && subredditName) {
-    try {
-      const sub = await reddit.getCurrentSubreddit();
-      const current = (await sub.getUserFlair({ usernames: [user] })).users[0]?.flairText ?? '';
-      if (current === ours) await reddit.removeUserFlair(subredditName, user);
-    } catch (error) {
-      console.warn('flair removal failed', error);
-    }
-  }
-
+  await removeStreakFlair(user);
   await redis.del(`streak:${user}`, `avatar:${user}`);
   await redis.hDel('followers', [user]);
-  await redis.hDel('flair:ours', [user]);
 };

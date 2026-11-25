@@ -33,7 +33,7 @@ import {
   standing,
 } from '../core/game';
 import { journeyRoutes, trackEnd, trackTurn } from '../core/journey';
-import { createIslandPost } from '../core/post';
+import { createIslandPost, scoreThread } from '../core/post';
 import { count, countRun } from '../core/stats';
 import { follow, isFollowing, updateStreakFlair } from '../core/social';
 
@@ -144,7 +144,8 @@ api.post('/share', async (c) => {
   if (!username) return fail(c, 'Log in to share', 401);
   const mine = await getMine(puzzle.id, username);
   if (!mine) return fail(c, 'Finish a run first');
-  if (!context.postId) return fail(c, 'No post to comment on', 404);
+  const postId = context.postId;
+  if (!postId) return fail(c, 'No post to comment on', 404);
   const foes = puzzle.level.foes.length;
   const me = await myRow(puzzle.id, username);
   const players = await playerCount(puzzle.id);
@@ -156,12 +157,20 @@ api.post('/share', async (c) => {
     `**${label}**  \n` +
     `${pips} **${mine.best}/${foes}** pushed off${top}  \n` +
     `First try: ${mine.firstTry}/${foes} · best on ${mine.bestAt === 1 ? 'the first run' : `run ${mine.bestAt}`}`;
+  // Always from the player's own account, as a reply to the post's one stickied
+  // scores comment. Never from the app account.
   let comment;
   try {
-    comment = await reddit.submitComment({ id: context.postId, text, runAs: 'USER' });
-  } catch (err) {
-    console.warn('Comment as user failed, posting as app', err);
-    comment = await reddit.submitComment({ id: context.postId, text: `u/${username}: ${text}`, runAs: 'APP' });
+    try {
+      comment = await reddit.submitComment({ id: await scoreThread(postId), text, runAs: 'USER' });
+    } catch (error) {
+      // The scores comment may have been deleted: check it, replace it if so, try once more.
+      console.warn('score comment failed, checking the scores comment', error);
+      comment = await reddit.submitComment({ id: await scoreThread(postId, true), text, runAs: 'USER' });
+    }
+  } catch (error) {
+    console.error('score comment failed', error);
+    return fail(c, 'Couldn’t post your comment right now');
   }
   return c.json<ShareResponse>({ ok: true, commentUrl: comment?.permalink ? `https://reddit.com${comment.permalink}` : null });
 });

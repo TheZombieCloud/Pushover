@@ -8,14 +8,82 @@ const dayName = (short: string) => WEEKDAY_NAMES[WEEKDAYS.findIndex((d) => d ===
 
 const goal = (p: Puzzle) => `push ${p.level.foes.length} slimes off in ${p.level.turns} turns`;
 
-const createPuzzlePost = async (puzzle: Puzzle, title: string) => {
-  const post = await reddit.submitCustomPost({
-    title,
-    textFallback: {
-      text: `Pushover: ${goal(puzzle)}. Everyone's moves are shown as arrows; plan yours and push them off the island.`,
-    },
-  });
+const fallback = (puzzle: Puzzle) => ({
+  text: `Pushover: ${goal(puzzle)}. Everyone's moves are shown as arrows; plan yours and push them off the island.`,
+});
+
+const SCORES_TEXT =
+  'Scores for this island go in the replies to this comment. After a run, press "Comment my score" to add yours.';
+
+const isCommentId = (id: string | undefined): id is `t1_${string}` => !!id && id.startsWith('t1_');
+
+/**
+ * The one stickied comment on a game post that score comments are replies to.
+ *
+ *   sticky:{postId}   string   id of that comment
+ *
+ * With `check`, a stored comment is looked up first and replaced if it is gone
+ * (used after a reply to it failed).
+ */
+export const scoreThread = async (postId: `t3_${string}`, check = false): Promise<`t1_${string}`> => {
+  const key = `sticky:${postId}`;
+  const stored = await redis.get(key);
+  if (isCommentId(stored)) {
+    if (!check) return stored;
+    try {
+      const existing = await reddit.getCommentById(stored);
+      if (!existing.removed) return stored;
+    } catch (error) {
+      console.warn('scores comment is gone, making a new one', error);
+    }
+  }
+  const comment = await reddit.submitComment({ id: postId, text: SCORES_TEXT, runAs: 'APP' });
+  await comment.distinguish(true);
+  await redis.set(key, comment.id);
+  return comment.id;
+};
+
+const BACKFILL_SCAN = 300;
+const BACKFILL_BATCH = 25;
+
+/**
+ * For posts made before the scores comment existed: go through the community's newest
+ * posts and give every Pushover post that has none its stickied scores comment. Does
+ * a batch at a time so a request can't run long; `more` says to run it again.
+ */
+export const backfillScoreThreads = async (subredditName: string): Promise<{ added: number; had: number; more: boolean }> => {
+  const posts = await reddit.getNewPosts({ subredditName, limit: BACKFILL_SCAN, pageSize: 100 }).all();
+  let added = 0;
+  let had = 0;
+  for (const post of posts) {
+    if (!(await redis.get(`post:${post.id}`))) continue; // not a Pushover post
+    if (await redis.get(`sticky:${post.id}`)) {
+      had++;
+      continue;
+    }
+    if (added >= BACKFILL_BATCH) return { added, had, more: true };
+    await scoreThread(post.id);
+    added++;
+  }
+  return { added, had, more: false };
+};
+
+/**
+ * Daily and test islands are posted by the app. An island a player built is posted
+ * from that player's own account (`asPlayer`), so it is theirs to delete and can be
+ * reported like any other post.
+ */
+const createPuzzlePost = async (puzzle: Puzzle, title: string, asPlayer = false) => {
+  const post = asPlayer
+    ? await reddit.submitCustomPost({ title, textFallback: fallback(puzzle), runAs: 'USER', userGeneratedContent: { text: title } })
+    : await reddit.submitCustomPost({ title, textFallback: fallback(puzzle) });
   await linkPost(post.id, puzzle.id);
+  try {
+    await scoreThread(post.id);
+  } catch (error) {
+    // Made again the first time someone comments their score.
+    console.warn('scores comment failed', error);
+  }
   return post;
 };
 
@@ -60,7 +128,7 @@ export const ensureDailyPost = async (): Promise<string | null> => {
 /** An island a player made in the editor, as a post of its own. */
 export const createIslandPost = async (puzzle: Puzzle) => {
   const twist = twistOf(puzzle.level);
-  return createPuzzlePost(puzzle, `Pushover island by u/${puzzle.by ?? 'someone'}${twist ? ` (${twist.name})` : ''}: ${goal(puzzle)}`);
+  return createPuzzlePost(puzzle, `Pushover island by u/${puzzle.by ?? 'someone'}${twist ? ` (${twist.name})` : ''}: ${goal(puzzle)}`, true);
 };
 
 /** A random island with its own fresh leaderboard, for playtesting. */
