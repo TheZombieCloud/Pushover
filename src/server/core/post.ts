@@ -1,4 +1,4 @@
-import { reddit, redis } from '@devvit/web/server';
+import { context, reddit, redis } from '@devvit/web/server';
 import type { Puzzle } from '../../shared/api';
 import { WEEKDAY_NAMES, WEEKDAYS } from '../../shared/pool';
 import { twistOf } from '../../shared/twist';
@@ -43,29 +43,87 @@ export const scoreThread = async (postId: `t3_${string}`, check = false): Promis
   return comment.id;
 };
 
+const DAILY_FLAIR = 'Daily';
+const DAILY_TITLE = 'Pushover No. ';
+const isPostId = (id: string | undefined): id is `t3_${string}` => !!id && id.startsWith('t3_');
+
+/**
+ * Gives a daily post the "Daily" post flair, creating the flair template the first time.
+ * The in-app catalog can then be told to surface only posts with this flair, which keeps
+ * test islands and player-made islands out of featured placements. Never throws: a post
+ * without flair still works. Returns whether the post has the flair afterwards.
+ *
+ *   flair:daily        string   id of the "Daily" post flair template
+ *   flaired:{postId}   string   '1' once that post has the flair
+ */
+const flairDailyPost = async (postId: `t3_${string}`): Promise<boolean> => {
+  const subredditName = context.subredditName;
+  if (!subredditName) {
+    console.warn('daily flair skipped: no subreddit in context');
+    return false;
+  }
+  try {
+    if (await redis.get(`flaired:${postId}`)) return true;
+    let flairTemplateId = await redis.get('flair:daily');
+    if (!flairTemplateId) {
+      const templates = await reddit.getPostFlairTemplates(subredditName);
+      const template =
+        templates.find((t) => t.text === DAILY_FLAIR) ??
+        (await reddit.createPostFlairTemplate({
+          subredditName,
+          text: DAILY_FLAIR,
+          backgroundColor: '#542662',
+          textColor: 'light',
+          modOnly: true,
+        }));
+      flairTemplateId = template.id;
+      await redis.set('flair:daily', flairTemplateId);
+    }
+    try {
+      await reddit.setPostFlair({ subredditName, postId, flairTemplateId });
+    } catch (error) {
+      await redis.del('flair:daily'); // the template may have been deleted; look it up again next time
+      throw error;
+    }
+    await redis.set(`flaired:${postId}`, '1');
+    return true;
+  } catch (error) {
+    console.warn('daily flair failed', error);
+    return false;
+  }
+};
+
 const BACKFILL_SCAN = 300;
 const BACKFILL_BATCH = 25;
 
 /**
- * For posts made before the scores comment existed: go through the community's newest
- * posts and give every Pushover post that has none its stickied scores comment. Does
- * a batch at a time so a request can't run long; `more` says to run it again.
+ * For posts made before the scores comment and the "Daily" flair existed: go through
+ * the community's newest posts, give every Pushover post that has no scores comment
+ * its stickied one, and every daily post its flair. Does a batch at a time so a
+ * request can't run long; `more` says to run it again.
  */
-export const backfillScoreThreads = async (subredditName: string): Promise<{ added: number; had: number; more: boolean }> => {
+export const backfillScoreThreads = async (
+  subredditName: string
+): Promise<{ added: number; had: number; flaired: number; more: boolean }> => {
   const posts = await reddit.getNewPosts({ subredditName, limit: BACKFILL_SCAN, pageSize: 100 }).all();
   let added = 0;
   let had = 0;
+  let flaired = 0;
   for (const post of posts) {
     if (!(await redis.get(`post:${post.id}`))) continue; // not a Pushover post
+    if (post.title.startsWith(DAILY_TITLE) && !(await redis.get(`flaired:${post.id}`))) {
+      if (flaired >= BACKFILL_BATCH) return { added, had, flaired, more: true };
+      if (await flairDailyPost(post.id)) flaired++;
+    }
     if (await redis.get(`sticky:${post.id}`)) {
       had++;
       continue;
     }
-    if (added >= BACKFILL_BATCH) return { added, had, more: true };
+    if (added >= BACKFILL_BATCH) return { added, had, flaired, more: true };
     await scoreThread(post.id);
     added++;
   }
-  return { added, had, more: false };
+  return { added, had, flaired, more: false };
 };
 
 /**
@@ -91,8 +149,9 @@ const createPuzzlePost = async (puzzle: Puzzle, title: string, asPlayer = false)
 export const createDailyPost = async () => {
   const puzzle = await getPuzzle(todayId());
   const twist = twistOf(puzzle.level);
-  const post = await createPuzzlePost(puzzle, `Pushover No. ${puzzle.number} · ${dayName(puzzle.weekday)}${twist ? ` · ${twist.name}` : ''}: ${goal(puzzle)}`);
+  const post = await createPuzzlePost(puzzle, `${DAILY_TITLE}${puzzle.number} · ${dayName(puzzle.weekday)}${twist ? ` · ${twist.name}` : ''}: ${goal(puzzle)}`);
   await redis.set(`posted:${puzzle.id}`, post.id);
+  await flairDailyPost(post.id);
   return post;
 };
 
@@ -106,7 +165,11 @@ export const createDailyPost = async () => {
 export const ensureDailyPost = async (): Promise<string | null> => {
   const day = todayId();
   const key = `posted:${day}`;
-  if (await redis.get(key)) return null;
+  const existing = await redis.get(key);
+  if (existing) {
+    if (isPostId(existing)) await flairDailyPost(existing); // makes up for a failed or missing flair
+    return null;
+  }
   // From before this record was kept: a day whose island is already frozen has been
   // posted (the island is frozen when its post is made).
   if (await redis.hGet(`puzzle:${day}`, 'level')) {

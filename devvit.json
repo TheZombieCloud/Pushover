@@ -1,6 +1,9 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
   "name": "pushover-game",
+  "marketingAssets": {
+    "icon": "assets/icon.png"
+  },
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -9,6 +12,9 @@
         "entry": "splash.html"
       },
       "game": {
+        "entry": "game.html"
+      },
+      "_direct_launch": {
         "entry": "game.html"
       }
     }
@@ -55,7 +61,7 @@
       },
       {
         "label": "Pushover: add scores comment to old posts",
-        "description": "Gives older Pushover posts the stickied comment that score comments reply to",
+        "description": "Gives older Pushover posts the stickied scores comment, and older daily posts the Daily flair",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/backfill-scores"

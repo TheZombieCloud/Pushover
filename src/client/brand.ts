@@ -235,14 +235,14 @@ const LETTERS: Record<string, string[]> = {
 };
 
 /** The name in chunky gold letters: each letter pixel is 3 x 3, inked and shaded. */
-const wordmark = (ctx: Ctx, text: string, x0: number, y0: number) => {
+const wordmark = (ctx: Ctx, text: string, x0: number, y0: number, pitch = 18) => {
   const cells: [number, number, boolean, boolean][] = [];
   [...text].forEach((ch, i) => {
     const rows = LETTERS[ch];
     if (!rows) return;
     rows.forEach((row, r) =>
       [...row].forEach((on, c) => {
-        if (on === '1') cells.push([x0 + i * 18 + c * 3, y0 + r * 3, rows[r - 1]?.[c] !== '1', rows[r + 1]?.[c] !== '1']);
+        if (on === '1') cells.push([x0 + i * pitch + c * 3, y0 + r * 3, rows[r - 1]?.[c] !== '1', rows[r + 1]?.[c] !== '1']);
       })
     );
   });
@@ -309,11 +309,50 @@ const banner = (id: string, scale: number) => {
   for (let x = -90; x < W; x += 256) ctx.drawImage(front, x, 57);
 };
 
+// ---- the catalog posters ----
+// The pictures Reddit shows in its games catalog (marketing/): the same scene as the
+// banner at a bigger pixel size, so it still reads when the placement is small. The
+// big slime has just hit the nearest foe and the others are already on their way off.
+const poster = (id: string, W: number, H: number, scale: number, kingX: number, wordX: number, cols: number, cast: [number, number, number, FrameName][]) => {
+  const ctx = artboard(id, W, H, scale);
+  sunburst(ctx, W, H, kingX, 60, 54);
+  const clouds = cloudSprites();
+  ctx.drawImage(clouds[1]!, W - 40, 34);
+  ctx.drawImage(clouds[2]!, kingX - 48, 30);
+  const mid = makeBank(256, 60, 22, CLOUD_MID);
+  for (let x = -30; x < W; x += 256) ctx.drawImage(mid, x, H - 20);
+
+  const ix = kingX - 36;
+  const edge = ix + cols * 8;
+  islet(ctx, ix, 64, cols, 3);
+  if (wordX > 0) wordmark(ctx, 'PUSHOVER', wordX, 5, 17);
+  king(ctx, kingX, 41);
+
+  // The one it just hit, then the ones further along: sliding, tipping, gone.
+  star(ctx, kingX + 27, 68);
+  for (const [x, y, len] of [[kingX + 31, 72, 4], [kingX + 32, 66, 3]] as const) px(ctx, x, y, '#fff3e3', len, 1);
+  foe(ctx, kingX + 41, 76, FOES[0]!, 'squash', 'scared');
+  drawSlime(ctx, kingX + 26, 88, FOES[3]!, { frame: 'low', lookX: -1, lookY: 0, blink: false, crown: false });
+  for (const [dx, footY, ramp, frame] of cast) {
+    if (footY < 80 && dx > 4) px(ctx, edge + dx - 13, footY - 5, '#fff3e3', 4, 1);
+    foe(ctx, edge + dx, footY, FOES[ramp]!, frame, 'scared');
+  }
+
+  const front = makeBank(256, 60, 33, CLOUD_FRONT);
+  for (let x = -90; x < W; x += 256) ctx.drawImage(front, x, H - 8);
+};
+
+const H_FALL = 94;
+
 const start = () => {
   document.body.style.margin = '0';
   document.body.style.background = '#1d1236';
   icon('icon', 8); // 512 x 512
   banner('banner', 6); // 1920 x 384
+  icon('icon-large', 16); // 1024 x 1024, the app's own icon
+  poster('featuring', 150, 100, 10, 50, 8, 11, [[10, 66, 1, 'squash'], [30, 52, 2, 'tall'], [20, H_FALL, 5, 'tall']]); // 1500 x 1000
+  poster('tile', 220, 100, 8, 40, 80, 14, [[-9, 73, 1, 'idle'], [14, 60, 2, 'tall'], [44, 46, 4, 'squash'], [22, H_FALL, 5, 'tall'], [62, 80, 0, 'tall']]); // 1760 x 800
+  poster('backdrop', 150, 100, 10, 98, 0, 5, []); // 1500 x 1000, behind the video
   document.body.dataset.ready = '1';
 };
 start();

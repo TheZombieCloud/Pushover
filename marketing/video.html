@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8" />
+<style>
+  @font-face { font-family: 'HEAD'; font-weight: 700; src: url('../node_modules/@fontsource/silkscreen/files/silkscreen-latin-700-normal.woff2') format('woff2'); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1500px; height: 1000px; overflow: hidden; background: #1d1236; }
+  #stage { position: absolute; inset: 0; background: url('backdrop.png') center/cover; image-rendering: pixelated; }
+  #stage.shake { animation: shake 0.26s steps(4); }
+  @keyframes shake { 0% { transform: translate(0, 0); } 25% { transform: translate(-10px, 10px); } 50% { transform: translate(10px, -10px); } 75% { transform: translate(-10px, 0); } 100% { transform: translate(0, 0); } }
+
+  /* the real game, big, in a chunky ink frame */
+  #card { position: absolute; left: 40px; top: 20px; width: 605px; height: 960px; border: 10px solid #1a1026; background: #1a1026; box-shadow: 10px 10px 0 rgba(26, 16, 38, 0.55); overflow: hidden; }
+  #card iframe { width: 390px; height: 627px; border: 0; transform: scale(1.5); transform-origin: 0 0; display: block; }
+
+  /* the words: gold pixel letters like the game's own name */
+  #say { position: absolute; left: 690px; top: 26px; width: 790px; font: 700 132px/1.02 'HEAD'; letter-spacing: -6px; color: #ffd23f; white-space: nowrap;
+    text-shadow: 10px 0 #1a1026, -10px 0 #1a1026, 0 10px #1a1026, 0 -10px #1a1026, 10px 10px #1a1026, -10px 10px #1a1026, 10px -10px #1a1026, -10px -10px #1a1026, 0 20px #1a1026, 10px 20px #1a1026, -10px 20px #1a1026; }
+  #say.in { animation: pop 0.2s steps(3); }
+  @keyframes pop { from { transform: translateY(-60px) scale(1.3); opacity: 0; } to { transform: none; opacity: 1; } }
+  #say b { display: block; font-weight: 700; color: #fff3e3; }
+
+  /* opening and closing card: the poster */
+  .full { position: absolute; inset: 0; background: url('featuring.png') center/cover; image-rendering: pixelated; }
+  #open { transition: transform 0.34s steps(6); }
+  #open.out { transform: translateY(-104%); }
+  #close { transform: translateY(104%); transition: transform 0.34s steps(6); }
+  #close.in { transform: none; }
+  #close div { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 0 30px; background: #1a1026; color: #fff3e3; font: 700 74px/1 'HEAD'; letter-spacing: -2px; text-align: center; transform: translateY(100%); transition: transform 0.2s steps(4) 0.4s; }
+  #close.in div { transform: none; }
+</style>
+<div id="stage">
+  <div id="card"><iframe id="game"></iframe></div>
+  <div id="say"></div>
+  <div class="full" id="close"><div>A NEW ISLAND EVERY DAY</div></div>
+  <div class="full" id="open"></div>
+</div>
+<script src="video.js"></script>

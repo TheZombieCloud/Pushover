@@ -30,16 +30,15 @@ menu.post('/post-test', async (c) => {
   }
 });
 
-// Mods only: give older Pushover posts the stickied scores comment that new posts get
-// when they are made. Safe to run more than once.
+// Mods only: give older Pushover posts the stickied scores comment, and older daily
+// posts the "Daily" flair, that new posts get when they are made. Safe to run more than once.
 menu.post('/backfill-scores', async (c) => {
   const subredditName = context.subredditName;
   if (!subredditName) return c.json<UiResponse>({ showToast: 'Open this from the community menu' }, 400);
   try {
-    const { added, had, more } = await backfillScoreThreads(subredditName);
-    const text = more
-      ? `Added the scores comment to ${added} posts. There are more: run this again.`
-      : `Added the scores comment to ${added} ${added === 1 ? 'post' : 'posts'}. ${had} already had one.`;
+    const { added, had, flaired, more } = await backfillScoreThreads(subredditName);
+    const done = `Scores comment added to ${added} ${added === 1 ? 'post' : 'posts'}, Daily flair to ${flaired}.`;
+    const text = more ? `${done} There are more: run this again.` : `${done} ${had} already had the comment.`;
     return c.json<UiResponse>({ showToast: { text, appearance: 'success' } });
   } catch (error) {
     console.error('backfill-scores failed', error);
