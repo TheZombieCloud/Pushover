@@ -50,6 +50,8 @@ export type InitResponse = {
   standing: Standing | null;
   subreddit: string;
   following: boolean;
+  /** True for a player's first push on any island, and again after a month away: they get the hand and the first-turn preview. */
+  newcomer: boolean;
 };
 
 export type RunRequest = { moves: Move[] };

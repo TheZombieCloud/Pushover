@@ -642,7 +642,41 @@ img.px {
   text-align: center;
 }
 
+/* Shown over the island while the first-turn preview plays. */
+.preview-tag {
+  align-self: center;
+  margin-top: calc(3 * var(--u));
+  padding: calc(1 * var(--u)) calc(5 * var(--u));
+  font: 700 calc(8 * var(--u)) / calc(10 * var(--u)) var(--label);
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--gold);
+  box-shadow: 0 0 0 var(--u) var(--ink);
+  pointer-events: none;
+}
+
+/* The feed card's Play button hops now and then, until you have played. */
+.btn.beckon {
+  animation: beckon 2.6s steps(1) infinite;
+}
+@keyframes beckon {
+  0%,
+  12%,
+  100% {
+    transform: none;
+  }
+  4% {
+    transform: translateY(calc(-2 * var(--u)));
+  }
+  8% {
+    transform: translateY(calc(-1 * var(--u)));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .btn.beckon {
+    animation: none;
+  }
   .pip.now {
     animation: none;
   }

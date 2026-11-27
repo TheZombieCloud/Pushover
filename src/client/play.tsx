@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent, ReactNode } from 'react';
 import { DIR, DIRS, dirFor } from '../shared/dirs';
-import { BOARD_W, FOE_KINDS, MAX_POWER, STAY, createState, isGround, isMoving, landing, launch, movesAt, outs, reaches, step, turnMoves, youFell } from '../shared/sim';
+import { BOARD_W, CELL, FOE_KINDS, MAX_POWER, STAY, createState, isGround, isMoving, landing, launch, movesAt, outs, reaches, step, turnMoves, youFell } from '../shared/sim';
 import type { Level, Move, RunResult, Spot, State } from '../shared/sim';
+import { rehearsal, showPush } from './guide';
+import type { Ghost } from './guide';
 import { KIND_INFO } from './kinds';
 import { ISLAND_H, Scene } from './scene';
 import type { Layout } from './scene';
@@ -30,6 +32,11 @@ export type PlayProps = {
   /** Called once when the run is over (all turns played, you fell, or no foes left). */
   onDone: (moves: Move[], result: RunResult) => void;
   onEvent?: (action: 'start') => void;
+  /**
+   * This is the player's first push ever, on any post: the hand shows them a drag, and
+   * they can watch turn 1 play out before they commit.
+   */
+  preview?: boolean;
   /** Leave a replay, or a test run in the editor. Shows a close button. */
   onClose?: () => void;
   /** False while a sheet (title, results) covers the screen: hides the HUD and controls. */
@@ -44,6 +51,13 @@ const FRAME_MS = 1000 / 60;
 /** Ticks per frame while the island is held down during a slide, whatever the speed. */
 const HOLD_SPEED = 2.4;
 const ARROW_GROW_FRAMES = 12;
+// The first-turn preview, in frames: how long the aim must hold still before it plays,
+// simulation ticks shown per frame going forward and winding back, and how long it
+// holds on the result. It plays once for each aim.
+const PREVIEW_SETTLE = 26;
+const PREVIEW_RATE = 0.6;
+const PREVIEW_REWIND = 2.2;
+const PREVIEW_HOLD = 45;
 
 // Art-pixel heights the layout reserves for the HUD and the controls.
 const HUD_H = 22;
@@ -74,30 +88,13 @@ const result = (state: State, turnsPlayed: number): RunResult => {
   return { score: o, outs: o, fell, turnsPlayed, complete: true };
 };
 
-// The hand that shows the drag appears only until someone has aimed once, ever.
-const AIMED_KEY = 'pushover:aimed';
-const hasAimed = (): boolean => {
-  try {
-    return window.localStorage.getItem(AIMED_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
-const markAimed = (): void => {
-  try {
-    window.localStorage.setItem(AIMED_KEY, '1');
-  } catch {
-    // no storage here
-  }
-};
-
 const Icon = ({ name }: { name: string }) => {
   const [w, h] = iconSize(name);
   return <img className="px" src={icon(name)} alt="" style={{ width: `calc(${w} * var(--px))`, height: `calc(${h} * var(--px))` }} />;
 };
 
 /** One run of an island. Remount it (change its key) to start over. */
-export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEvent, onClose, active, children }: PlayProps) => {
+export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEvent, preview: wantPreview = false, onClose, active, children }: PlayProps) => {
   const watching = mode === 'watch';
   const vp = useViewport(290, true);
   const layout = useMemo(() => gameLayout(vp), [vp]);
@@ -140,14 +137,20 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
   const [flash, setFlash] = useState<string | null>(null);
   const flashTimer = useRef(0);
   const muted = useMuted();
-  // Show the hand that demonstrates the drag: first-time players only.
-  const [coachAtStart] = useState(() => mode === 'play' && !script && !hasAimed());
+  // The hand that demonstrates the drag, and the preview of turn 1: only for a player's
+  // first push ever (the server keeps that per account). Decided when the run starts,
+  // so it lasts through turn 1 and no longer.
+  const [coachAtStart] = useState(() => mode === 'play' && !script && wantPreview);
   const coach = useRef(coachAtStart);
   /** Is the play screen showing (no title card or sheet over it)? For the loop. */
   const onScreen = useRef(active);
-  // What the hand demonstrates: a short push that stays on the island, in the most
-  // open direction (furthest from the lines to the foes, where their arrows are).
+  // What the hand demonstrates: a push that sends one slime off the island. If no
+  // single push here does, a short push that stays on the island, toward its middle,
+  // and clear of the lines to the foes (where their arrows are) when it can be.
   const [demo] = useState<Move>(() => {
+    if (!coachAtStart) return STAY;
+    const lead = showPush(level);
+    if (lead) return lead;
     // A foe that moves this turn may be charging: its arrow then carries on past you,
     // so the far side of you is taken as well.
     const opening = movesAt(level, createState(level), 0, STAY);
@@ -156,14 +159,31 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
       return (opening[i + 1]?.p ?? 0) > 0 ? [toward, (toward + DIRS / 2) % DIRS] : [toward];
     });
     const openness = (d: number) => Math.min(DIRS, ...bearings.map((b) => Math.min(Math.abs(d - b), DIRS - Math.abs(d - b))));
+    // The middle of the grass, as seen from your slime.
+    let sx = 0;
+    let sy = 0;
+    let cells = 0;
+    level.shape.forEach((row, r) => {
+      for (let c = 0; c < row.length; c++)
+        if (row[c] === '#') {
+          sx += (c + 0.5) * CELL;
+          sy += (r + 0.5) * CELL;
+          cells++;
+        }
+    });
+    const mx = cells ? sx / cells - level.you.x : 0;
+    const my = cells ? sy / cells - level.you.y : 0;
+    const far = Math.sqrt(mx * mx + my * my);
+    const inward = (d: number) => (far < 6 ? 0 : (DIR[d]![0] * mx + DIR[d]![1] * my) / far);
     let best: Move = { d: bearings[0] ?? 0, p: 1 };
-    let bestOpen = -1;
+    let bestScore = -Infinity;
     for (let d = 0; d < DIRS; d += 3)
       for (const p of [3, 2]) {
         const end = landing(level.you, { d, p }, level);
         if (!isGround(level.shape, end.x, end.y)) continue;
-        if (openness(d) > bestOpen) {
-          bestOpen = openness(d);
+        const score = inward(d) + (Math.min(openness(d), 6) / 6) * 0.5;
+        if (score > bestScore) {
+          bestScore = score;
           best = { d, p };
         }
         break;
@@ -171,6 +191,14 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
     return best;
   });
   const demoRef = useRef(demo);
+  // A player's first push ever (on any post), first turn only: once the aim holds still, the slimes play the turn
+  // out as aimed and wind back to where they stood, so a new player watches a whole
+  // turn before spending one. Nothing is played for real until Push. It plays once for
+  // an aim; any change of aim puts everyone back at once and starts the wait again.
+  const preview = useRef<{ d: number; p: number; frames: Ghost[][] } | null>(null);
+  const previewClock = useRef(0);
+  const previewOn = useRef(false);
+  const [previewing, setPreviewing] = useState(false);
 
 
   const setPlan = useCallback((next: Move) => {
@@ -187,7 +215,6 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
     setTouched(true);
     if (coach.current) {
       coach.current = false;
-      markAimed();
     }
   };
 
@@ -219,7 +246,6 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
       phaseFrames.current = 0;
       if (coach.current) {
         coach.current = false;
-        markAimed();
       }
       setBusy(true);
     },
@@ -365,9 +391,56 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
         level.foes.every((f) => !f.kind) && (p === 'aim' || p === 'windup')
           ? Array.from({ length: Math.max(0, level.turns - turnAt - 1) }, (_, k) => turnMoves(level, turnAt + 1 + k, STAY))
           : null;
+      let stage = shown;
+      let ghosts: Ghost[] | null = null;
+      let rehearsing = false;
+      if (coachAtStart && !coach.current && p === 'aim' && moves.current.length === 0 && arrows) {
+        const mine = arrows[0] ?? STAY;
+        if (mine.p > 0) {
+          if (!preview.current || preview.current.d !== mine.d || preview.current.p !== mine.p) {
+            preview.current = { d: mine.d, p: mine.p, frames: rehearsal(level, s, arrows) };
+            previewClock.current = 0;
+          }
+          const frames = preview.current.frames;
+          const last = frames.length - 1;
+          const play = Math.ceil(last / PREVIEW_RATE);
+          const rewind = Math.ceil(last / PREVIEW_REWIND);
+          const c = previewClock.current++ - PREVIEW_SETTLE;
+          const k = c < 0 ? -1 : c;
+          const at =
+            k < 0
+              ? -1
+              : k < play
+                ? k * PREVIEW_RATE
+                : k < play + PREVIEW_HOLD
+                  ? last
+                  : k < play + PREVIEW_HOLD + rewind
+                    ? last - (k - play - PREVIEW_HOLD) * PREVIEW_REWIND
+                    : -1;
+          const now = at < 0 ? null : frames[Math.max(0, Math.min(last, Math.round(at)))];
+          const next = at < 0 ? null : frames[Math.max(0, Math.min(last, Math.round(at) + 1))];
+          if (now && next) {
+            rehearsing = true;
+            // The real slimes, shown where the rehearsal has them. The arrows are put
+            // away while it plays; a cross stays where anyone went over the edge.
+            stage = {
+              ticks: s.ticks,
+              bodies: now.map((g, i) => ({ x: g.x, y: g.y, vx: (next[i]?.x ?? g.x) - g.x, vy: (next[i]?.y ?? g.y) - g.y, alive: g.alive })),
+            };
+            ghosts = now;
+            arrows = null;
+          }
+        }
+      } else preview.current = null;
+      if (rehearsing !== previewOn.current) {
+        previewOn.current = rehearsing;
+        setPreviewing(rehearsing);
+      }
       scene.draw({
-        state: shown,
+        state: stage,
         arrows,
+        ghosts,
+        preview: rehearsing,
         future,
         turnNo: turnAt + 1,
         arrowT: p === 'aim' ? phaseFrames.current / ARROW_GROW_FRAMES : 1,
@@ -488,6 +561,10 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
           ? 'Drag to aim. Arrows show what each slime does this turn.'
           : plan.p === 0
             ? 'No power: you stay put this turn.'
+            : previewing
+              ? 'This is what your push would do. Nothing has moved yet.'
+              : coachAtStart && turn === 0
+                ? 'Hold your aim still to see the turn play out. First turn only.'
             : turnsLeft === 1
               ? 'Last turn.'
               : 'Everyone moves at once. No take-backs.';
@@ -534,6 +611,7 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
               )}
             </div>
           </div>
+          {previewing && <p className="preview-tag">Preview</p>}
           <div className="spacer" />
           {!over && (
             <div className="controls">

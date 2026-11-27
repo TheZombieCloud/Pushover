@@ -45,6 +45,6 @@ The app also adds a "Daily" post flair to the subreddit and puts it on each dail
 
 ## Data
 
-The app stores each player's runs, scores and streak under their username. Any player can remove all of it with **Pushover: delete my data** in the subreddit menu. When a post is deleted or removed the app also removes what it stored for that post.
+The app stores each player's runs, scores, streak and when they last played under their username. Any player can remove all of it with **Pushover: delete my data** in the subreddit menu. When a post is deleted or removed the app also removes what it stored for that post.
 
 Notes on the code are in DEVELOPMENT.md.

@@ -363,6 +363,8 @@ const PostSheet = ({
 
 export const App = () => {
   const [init, setInit] = useState<InitResponse | null>(null);
+  /** Set once a push has been made in this visit: the first-turn preview is not shown again. */
+  const [pushed, setPushed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [screen, setScreen] = useState<Screen>('title');
   const [standing, setStanding] = useState<Standing | null>(null);
@@ -427,6 +429,7 @@ export const App = () => {
 
   const onEvent = useCallback(() => {
     void startJourney();
+    setPushed(true);
   }, []);
 
   // The editor: the island as it stands.
@@ -551,6 +554,7 @@ export const App = () => {
       onDone={onRunDone}
       onTurn={onTurn}
       onEvent={onEvent}
+      preview={init.newcomer && !pushed}
       active={screen === 'play'}
       script={screen === 'play' ? autoplay : null}
     >

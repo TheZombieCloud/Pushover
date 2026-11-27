@@ -1,4 +1,5 @@
-import { cloneState, isMoving, launch, step } from '../shared/sim';
+import { DIRS } from '../shared/dirs';
+import { MAX_POWER, cloneState, createState, isMoving, launch, outs, playTurn, step, youFell } from '../shared/sim';
 import type { Level, Move, Spot, State } from '../shared/sim';
 
 /*
@@ -14,6 +15,42 @@ export const outcome = (level: Level, state: State, moves: Move[]): Ghost[] => {
   launch(s, moves);
   while (isMoving(s)) step(s, level);
   return s.bodies.map((b) => ({ x: b.x, y: b.y, alive: b.alive }));
+};
+
+/**
+ * The push shown to teach the game (on the feed card, and by the hand the first time
+ * someone plays): a first-turn push that sends one foe off and keeps you on, the
+ * gentlest such. One and no more, so it gives little of the island away; if every
+ * scoring push sends several off, the one that sends the fewest. Null if no single
+ * push sends anyone off.
+ */
+export const showPush = (level: Level): Move | null => {
+  let best: Move | null = null;
+  let fewest = Infinity;
+  for (let p = 3; p <= MAX_POWER; p++)
+    for (let d = 0; d < DIRS; d += 2) {
+      const trial = createState(level);
+      playTurn(trial, level, 0, { d, p });
+      const off = outs(trial);
+      if (youFell(trial) || off === 0 || off >= fewest) continue;
+      fewest = off;
+      best = { d, p };
+    }
+  return best;
+};
+
+/** The whole turn, tick by tick: where everyone is at each moment, for a preview that moves. */
+export const rehearsal = (level: Level, state: State, moves: Move[]): Ghost[][] => {
+  const s = cloneState(state);
+  launch(s, moves);
+  const frames: Ghost[][] = [];
+  const snap = () => frames.push(s.bodies.map((b) => ({ x: b.x, y: b.y, alive: b.alive })));
+  snap();
+  while (isMoving(s) && frames.length < 900) {
+    step(s, level);
+    snap();
+  }
+  return frames;
 };
 
 export type Bounce = {

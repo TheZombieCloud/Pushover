@@ -87,7 +87,7 @@ One picture, one pixel size. The scene canvas fills the screen and is scaled by 
 
 ## First play
 
-There are no tutorial screens. The title card states the goal in one sentence. The first time anyone plays, a hand drags out from their slime and the arrow grows after it, on a loop, until they touch anything. After that it never appears again in that browser. One line of hint text sits under the island and changes with what's happening.
+There are no tutorial screens. The title card states the goal in one sentence. Before a player's first push ever (the server records it per account), a hand drags out from their slime toward a push that sends one slime off, on a loop, until they touch anything. On that first turn, holding the aim still plays the turn out as a preview and winds it back; nothing counts until Push. Neither appears again after that first push, unless the player stays away for 30 days. One line of hint text sits under the island and changes with what's happening.
 
 ## Pacing
 

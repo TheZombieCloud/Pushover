@@ -82,6 +82,7 @@ const init = (): InitResponse => ({
   standing: standing(),
   subreddit: 'PushoverGame',
   following: false,
+  newcomer: scenario === 'fresh' && !mine,
 });
 
 type Reply = { status: number; body: unknown };

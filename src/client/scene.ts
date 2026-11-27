@@ -194,7 +194,9 @@ export type DrawInput = {
   turnNo?: number;
   /** Prototype aid: your arrow stops at the first slime you hit and shows where it goes. */
   bounce?: Bounce | null;
-  /** Prototype aid: where everyone ends up this turn. */
+  /** The first-turn preview is playing: slimes are drawn see-through, so it reads as not real. */
+  preview?: boolean;
+  /** The first-turn preview: where everyone is in the rehearsal (marks who has fallen). */
   ghosts?: Ghost[] | null;
   /** True in the beat before launch: everyone about to move crouches. */
   windup?: boolean;
@@ -528,7 +530,7 @@ export class Scene {
 
     if (input.arrows && input.future && (input.arrowT ?? 1) >= 1) this.drawFuture(bodies, input.arrows, input.future, input.turnNo ?? 1);
     if (input.arrows) this.drawArrows(bodies, input.arrows, frame, input.arrowT ?? 1, input.bounce ?? null);
-    if (input.arrows && input.ghosts) this.drawGhosts(bodies, input.ghosts);
+    if (input.ghosts) this.drawGhosts(input.ghosts);
 
     // Slimes and boulders, back to front.
     const order = [
@@ -566,6 +568,7 @@ export class Scene {
       // A foe with no move this turn is asleep: eyes shut, "z Z" drifting up.
       const kind = i > 0 ? this.level.foes[i - 1]?.kind : undefined;
       const asleep = !moving && i > 0 && (kind ? kind === 'sleeper' : !!input.arrows && !!m && m.p === 0);
+      if (input.preview) ctx.globalAlpha = 0.55;
       drawSlime(ctx, b.x, b.y + 6, rampFor(i), {
         frame: pose,
         lookX: asleep ? 0 : Math.abs(lx) > 0.4 ? Math.sign(lx) : 0,
@@ -576,6 +579,7 @@ export class Scene {
         paper: kind === 'mirror',
         face: kind === 'dodger' ? 'scared' : 'calm',
       });
+      ctx.globalAlpha = 1;
       if (asleep) {
         const t = (frame + i * 23) % 90;
         const x = Math.round(b.x) + 6;
@@ -632,29 +636,19 @@ export class Scene {
     }
   }
 
-  /** Where each slime ends up this turn: a dotted ring in its colour, or a cross if it falls. */
-  private drawGhosts(bodies: State['bodies'], ghosts: Ghost[]) {
+  /** The preview of a turn: a cross in a slime's colour where it went over the edge. */
+  private drawGhosts(ghosts: Ghost[]) {
     const { ctx } = this;
     ghosts.forEach((g, i) => {
-      const b = bodies[i];
-      if (!b?.alive) return;
-      const ramp = rampFor(i);
-      const color = i === 0 ? '#fff3e3' : ramp.l;
-      if (!g.alive) {
-        for (let k = -3; k <= 3; k++) {
-          px(ctx, g.x + k, g.y + k + 1, INK);
-          px(ctx, g.x + k, g.y - k + 1, INK);
-          px(ctx, g.x + k, g.y + k, color);
-          px(ctx, g.x + k, g.y - k, color);
-        }
-        return;
+      if (g.alive) return;
+      const color = i === 0 ? '#fff3e3' : rampFor(i).l;
+      for (let k = -4; k <= 4; k++) {
+        px(ctx, g.x + k - 1, g.y + k + 1, INK, 3, 2);
+        px(ctx, g.x + k - 1, g.y - k + 1, INK, 3, 2);
       }
-      if ((g.x - b.x) ** 2 + (g.y - b.y) ** 2 < 4) return;
-      for (let k = 0; k < 32; k++) {
-        if (k % 4 > 1) continue;
-        const a = (k / 32) * Math.PI * 2;
-        px(ctx, g.x + Math.cos(a) * 8, g.y + Math.sin(a) * 7 + 1, INK);
-        px(ctx, g.x + Math.cos(a) * 8, g.y + Math.sin(a) * 7, color);
+      for (let k = -4; k <= 4; k++) {
+        px(ctx, g.x + k, g.y + k, color, 1, 2);
+        px(ctx, g.x + k, g.y - k, color, 1, 2);
       }
     });
   }

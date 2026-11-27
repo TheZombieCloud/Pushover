@@ -21,6 +21,8 @@ import {
   getMine,
   getPuzzle,
   getStreak,
+  isNewcomer,
+  markPushed,
   latestIslands,
   leaderboard,
   listIsland,
@@ -54,24 +56,28 @@ api.get('/init', async (c) => {
   await count(puzzle.id, c.req.query('from') === 'card' ? 'views' : 'opens');
   const [players, leaders] = await Promise.all([playerCount(puzzle.id), leaderboard(puzzle.id, 0, 0)]);
   const base = { username, puzzle, players, best: leaders[0] ?? null, subreddit: context.subredditName ?? '' };
-  if (!username) return c.json<InitResponse>({ ...base, streak: 0, standing: null, following: false });
+  if (!username) return c.json<InitResponse>({ ...base, streak: 0, standing: null, following: false, newcomer: true });
   const [mine, streak, following] = await Promise.all([getMine(puzzle.id, username), getStreak(username), isFollowing(username)]);
   return c.json<InitResponse>({
     ...base,
     streak,
     following,
     standing: mine ? await standing(puzzle, username, mine) : null,
+    newcomer: await isNewcomer(username, mine),
   });
 });
 
 // After each turn: replay what's been played so far and report journey progress.
 api.post('/turn', async (c) => {
-  const { puzzle } = await current();
+  const { username, puzzle } = await current();
   const body = await c.req.json<{ moves?: unknown }>().catch(() => ({ moves: null }));
   const moves = parseMoves(body.moves, puzzle.level);
   if (!moves) return fail(c, 'Bad moves');
   const r = runLevel(puzzle.level, moves);
-  if (moves.length === 1) await count(puzzle.id, 'started');
+  if (moves.length === 1) {
+    await count(puzzle.id, 'started');
+    if (username) await markPushed(username);
+  }
   await trackTurn(c, puzzle, r.turnsPlayed, r.outs);
   return c.json({ ok: true });
 });

@@ -17,6 +17,7 @@ import { DAY_MS, dailyNumber, isDailyId, todayId } from './days';
  *   lb:{pid}           zset    user -> (SCORE_CAP - best) * 1e6 + bestAt   (ascending = best)
  *   first:{pid}        hash    score -> players whose first finished run scored that
  *   streak:{user}      hash    last (day id), count
+ *   pushed:{user}      string  when this player last started a run on any island (ms)
  *
  * Player-made islands (pid = u-<time>-<random>, stored as a puzzle like any other):
  *
@@ -212,6 +213,23 @@ export const resetMine = async (pid: string, user: string): Promise<boolean> => 
   await redis.hIncrBy(`first:${pid}`, String(mine.firstTry), -1);
   await redis.del(meKey(pid, user));
   return true;
+};
+
+// ---- newcomers ----
+// The hand and the first-turn preview are for someone's very first push, on whichever
+// post that is, and again for someone who has not played for LAPSE_DAYS. Players from
+// before this was recorded are placed by their streak's last day, or a run on this island.
+const LAPSE_DAYS = 30;
+
+export const isNewcomer = async (user: string, mine: Mine | null): Promise<boolean> => {
+  const [pushed, last] = await Promise.all([redis.get(`pushed:${user}`), redis.hGet(`streak:${user}`, 'last')]);
+  const seen = Math.max(Number(pushed) || 0, (last && Date.parse(last)) || 0);
+  if (seen > 0) return Date.now() - seen > LAPSE_DAYS * DAY_MS;
+  return !mine;
+};
+
+export const markPushed = async (user: string): Promise<void> => {
+  await redis.set(`pushed:${user}`, String(Date.now()));
 };
 
 // ---- streaks ----
