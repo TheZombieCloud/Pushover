@@ -1,5 +1,5 @@
-import { CELL, COLS, FOE_KINDS, RADIUS, ROCK_SIZES, ROWS, createState, isGround, outs, playTurn } from './sim.ts';
-import type { Foe, FoeKind, Level, Rock, Spot } from './sim.ts';
+import { BUMPER_R, CELL, COLS, FOE_KINDS, RADIUS, ROCK_SIZES, ROWS, createState, isGround, outs, playTurn } from './sim.ts';
+import type { Fence, Foe, FoeKind, Level, Rock, Spot } from './sim.ts';
 import { edgeDistance } from './solve.ts';
 
 /*
@@ -139,6 +139,16 @@ export type GenOptions = {
   rocks?: [number, number];
   /** A frozen island. */
   ice?: boolean;
+  /** How many bumpers, as [fewest, most]. */
+  bumpers?: [number, number];
+  /** How many stretches of coast get a fence, as [fewest, most]. */
+  fences?: [number, number];
+  /** Wind, from one of the eight compass points. */
+  wind?: boolean;
+  /** Patches of cracked grass. */
+  crumble?: boolean;
+  /** How many of the foes are bombs. */
+  bombs?: number;
 };
 
 /** A raw level (par 0); the pool builder solves and filters it. */
@@ -188,11 +198,85 @@ export const generate = (seed: number, opt: GenOptions): Level | null => {
     if (rocks.length < opt.rocks[0]) return null;
   }
 
+  // Bumpers: like boulders, well inside and clear of every slime and boulder.
+  const bumpers: Spot[] = [];
+  if (opt.bumpers) {
+    const want = int(r, opt.bumpers[0], opt.bumpers[1]);
+    for (let tries = 0; tries < 300 && bumpers.length < want; tries++) {
+      const [rr, c] = cells[int(r, 0, cells.length - 1)]!;
+      if ((edge[rr]![c] ?? 0) < 2) continue;
+      const k = center(rr, c);
+      if (spots.some((s) => dist(s, k) < RADIUS + BUMPER_R + 10)) continue;
+      if ([...rocks, ...bumpers].some((o) => dist(o, k) < BUMPER_R * 2 + RADIUS * 2 + 6)) continue;
+      bumpers.push(k);
+    }
+    if (bumpers.length < opt.bumpers[0]) return null;
+  }
+
+  // Fences: straight stretches of coast, three to six cells long. A fence sits on the
+  // line between a grass cell and the sky beside it, where the outline is straight.
+  const fences: Fence[] = [];
+  if (opt.fences) {
+    const runs: Fence[] = [];
+    // Each side in turn: which neighbour must be sky.
+    for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) {
+      const across = dr !== 0; // a top or bottom coast runs across
+      const lines = across ? ROWS : COLS;
+      const steps = across ? COLS : ROWS;
+      for (let a = 0; a < lines; a++) {
+        let start = -1;
+        for (let b = 0; b <= steps; b++) {
+          const rr = across ? a : b;
+          const c = across ? b : a;
+          const on = b < steps && shape[rr]?.[c] === '#' && shape[rr + dr]?.[c + dc] !== '#';
+          if (on && start < 0) start = b;
+          if (!on && start >= 0) {
+            // Leave a cell at each end, where the outline rounds off.
+            const from = start + 1;
+            const to = b - 1;
+            if (to - from >= 3) {
+              const len = Math.min(6, to - from);
+              const s0 = from + int(r, 0, to - from - len);
+              const line = ((across ? dr : dc) < 0 ? a : a + 1) * CELL;
+              runs.push(across ? { x1: s0 * CELL, y1: line, x2: (s0 + len) * CELL, y2: line } : { x1: line, y1: s0 * CELL, x2: line, y2: (s0 + len) * CELL });
+            }
+            start = -1;
+          }
+        }
+      }
+    }
+    const want = int(r, opt.fences[0], opt.fences[1]);
+    while (fences.length < want && runs.length) fences.push(runs.splice(int(r, 0, runs.length - 1), 1)[0]!);
+    if (fences.length < opt.fences[0]) return null;
+  }
+
+  // Cracked grass: a few square patches, never right where you start.
+  let ground = shape;
+  if (opt.crumble) {
+    const g = shape.map((row) => [...row]);
+    const patches = int(r, 5, 8);
+    for (let k = 0; k < patches; k++) {
+      const [pr, pc] = cells[int(r, 0, cells.length - 1)]!;
+      const size = int(r, 1, 2);
+      for (let rr = pr - size; rr <= pr + size; rr++)
+        for (let c = pc - size; c <= pc + size; c++) if (g[rr]?.[c] === '#') g[rr]![c] = '%';
+    }
+    const yr = Math.floor(you.y / CELL);
+    const yc = Math.floor(you.x / CELL);
+    for (let rr = yr - 1; rr <= yr + 1; rr++) for (let c = yc - 1; c <= yc + 1; c++) if (g[rr]?.[c] === '%') g[rr]![c] = '#';
+    ground = g.map((row) => row.join(''));
+    if (!ground.some((row) => row.includes('%'))) return null;
+  }
+  const wind = opt.wind ? int(r, 0, 7) * 9 : undefined;
+
   // The cast: always a chaser, a dodger once there is room for one, at most one
-  // mirror, and the rest a mix. Dealt to the spots in a shuffled order.
+  // mirror, any bombs asked for, and the rest a mix. Dealt to the spots in a
+  // shuffled order.
   const kinds: FoeKind[] = opt.foes >= 2 ? ['chaser', 'dodger'] : ['chaser'];
+  for (let b = 0; b < (opt.bombs ?? 0) && kinds.length < opt.foes; b++) kinds.push('bomb');
   while (kinds.length < opt.foes) {
     const k = FOE_KINDS[int(r, 0, FOE_KINDS.length - 1)]!;
+    if (k === 'bomb') continue;
     if (k === 'mirror' && kinds.includes('mirror')) continue;
     kinds.push(k);
   }
@@ -204,7 +288,18 @@ export const generate = (seed: number, opt: GenOptions): Level | null => {
     const kind = kinds[i]!;
     return kind === 'chaser' ? { x: s.x, y: s.y, kind, power: [3, 5][int(r, 0, 1)]! } : { x: s.x, y: s.y, kind };
   });
-  const level: Level = { shape, you, foes, turns: opt.turns, par: 0, ...(rocks.length ? { rocks } : {}), ...(opt.ice ? { ice: true } : {}) };
+  const level: Level = {
+    shape: ground,
+    you,
+    foes,
+    turns: opt.turns,
+    par: 0,
+    ...(rocks.length ? { rocks } : {}),
+    ...(bumpers.length ? { bumpers } : {}),
+    ...(fences.length ? { fences } : {}),
+    ...(opt.ice ? { ice: true } : {}),
+    ...(wind !== undefined ? { wind } : {}),
+  };
   // Left alone, the foes should not knock each other off.
   const state = createState(level);
   for (let t = 0; t < opt.turns; t++) playTurn(state, level, t, { d: 0, p: 0 });

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent, ReactNode } from 'react';
 import { DIR, DIRS, dirFor } from '../shared/dirs';
-import { BOARD_W, CELL, FOE_KINDS, MAX_POWER, STAY, createState, isGround, isMoving, landing, launch, movesAt, outs, reaches, step, turnMoves, youFell } from '../shared/sim';
+import { BOARD_W, CELL, FOE_KINDS, MAX_POWER, STAR_GOALS, STAY, createState, endTurn, isGround, isMoving, landing, launch, movesAt, outs, reaches, runLevel, step, turnMoves, youFell } from '../shared/sim';
+import type { SimEvent } from '../shared/sim';
 import type { Level, Move, RunResult, Spot, State } from '../shared/sim';
 import { rehearsal, showPush } from './guide';
 import type { Ghost } from './guide';
@@ -11,7 +12,7 @@ import type { Layout } from './scene';
 import { setMuted, sfx, useMuted } from './sound';
 import { PACING, loadSpeed, nextSpeed, saveSpeed } from './speed';
 import type { Speed } from './speed';
-import { SIDE_W, foePip, icon, iconSize, kindPip, useViewport } from './uiart';
+import { SIDE_W, TERRAIN_INFO, foePip, icon, iconSize, kindPip, terrainOf, terrainPip, useViewport } from './uiart';
 import type { Viewport } from './uiart';
 
 type Phase = 'aim' | 'windup' | 'slide' | 'settle' | 'over';
@@ -135,6 +136,9 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
   const [speed, setSpeed] = useState<Speed>(loadSpeed);
   const speedRef = useRef<Speed>(speed);
   const [flash, setFlash] = useState<string | null>(null);
+  /** The bonus star has been earned on this run. */
+  const [starNow, setStarNow] = useState(false);
+  const starRef = useRef(false);
   const flashTimer = useRef(0);
   const muted = useMuted();
   // The hand that demonstrates the drag, and the preview of turn 1: only for a player's
@@ -275,6 +279,26 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
     let frame = 0;
     let raf = 0;
 
+    /** Effects and sounds for what just happened. */
+    const heard = (ev: SimEvent[]) => {
+      scene.events(ev, s0());
+      for (const e of ev) {
+        if (e.kind === 'hit') sfx.bump(e.force);
+        else if (e.kind === 'bonk') sfx.bonk(e.force);
+        else if (e.kind === 'boom') {
+          sfx.bump(3);
+          sfx.bonk(3);
+        } else if (e.kind === 'crumble') sfx.poof();
+        else {
+          sfx.fall();
+          if (e.who === 0) sfx.oops();
+          else sfx.score(outs(s0()));
+        }
+      }
+      if (ev.some((e) => e.kind === 'fall')) syncKnocked();
+    };
+    const s0 = () => sim.current;
+
     const logic = () => {
       frame++;
       phaseFrames.current++;
@@ -301,23 +325,17 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
           before.current = s.bodies.map((b) => ({ x: b.x, y: b.y }));
           const ev = step(s, level);
           scene.tick(s);
-          if (ev.length) {
-            scene.events(ev, s);
-            for (const e of ev) {
-              if (e.kind === 'hit') sfx.bump(e.force);
-              else if (e.kind === 'bonk') sfx.bonk(e.force);
-              else {
-                sfx.fall();
-                if (e.who === 0) sfx.oops();
-                else sfx.score(outs(s));
-              }
-            }
-            if (ev.some((e) => e.kind === 'fall')) syncKnocked();
-          }
+          if (ev.length) heard(ev);
           if (!isMoving(s)) {
             for (const b of s.bodies) {
               b.vx = 0;
               b.vy = 0;
+            }
+            // Cracked grass that was slid over falls away now.
+            const after = endTurn(s, level);
+            if (after.length) {
+              heard(after);
+              scene.setGone(s.gone);
             }
             simAcc.current = 1;
             phase.current = 'settle';
@@ -336,13 +354,21 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
         if (phaseFrames.current > pace.settle && !scene.busy()) {
           const played = moves.current.length;
           setTurn(played);
+          if (level.star && !starRef.current && runLevel(level, moves.current).star) {
+            starRef.current = true;
+            setStarNow(true);
+            sfx.score(9);
+            setFlash('Bonus star!');
+            window.clearTimeout(flashTimer.current);
+            flashTimer.current = window.setTimeout(() => setFlash(null), 1800);
+          }
           syncSpots();
           onTurn?.(moves.current);
           const end = youFell(s) || outs(s) === level.foes.length || played >= level.turns;
           if (end) {
             phase.current = 'over';
             setOver(true);
-            onDone(moves.current, result(s, played));
+            onDone(moves.current, { ...runLevel(level, moves.current), ...result(s, played) });
           } else {
             phase.current = 'aim';
             phaseFrames.current = 0;
@@ -361,7 +387,7 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
       const shown: State =
         p === 'slide'
           ? {
-              ticks: s.ticks,
+              ...s,
               bodies: s.bodies.map((b, i) => {
                 const from = before.current[i];
                 return b.alive && from ? { ...b, x: from.x + (b.x - from.x) * t, y: from.y + (b.y - from.y) * t } : b;
@@ -591,10 +617,18 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
               {Array.from({ length: level.turns }, (_, i) => (
                 <span key={i} className={`pip ${i < turn ? 'done' : i === turn && !over ? 'now' : ''}`} />
               ))}
+              {level.star && (
+                <span
+                  className={`star-icon hud-star ${starNow ? 'got' : ''}`}
+                  role="img"
+                  aria-label={`Bonus star${starNow ? ' earned' : ''}: ${STAR_GOALS[level.star]}`}
+                  title={STAR_GOALS[level.star]}
+                />
+              )}
             </div>
             <div className="foes" aria-label={`${knocked.filter(Boolean).length} of ${level.foes.length} pushed off`}>
               {level.foes.map((_, i) => (
-                <img key={i} className="px" src={foePip(i, !!knocked[i])} alt="" />
+                <img key={i} className="px" src={level.foes[i]?.kind === 'bomb' && !knocked[i] ? kindPip(i, 'bomb') : foePip(i, !!knocked[i])} alt="" />
               ))}
             </div>
             <div className="hud-actions">
@@ -683,6 +717,27 @@ export const Play = ({ level, mode = 'play', script = null, onTurn, onDone, onEv
               ))}
             </ul>
             <p className="center-text">Nobody leaves the island unless pushed.</p>
+            {terrainOf(level).length > 0 && (
+              <>
+                <p className="kicker">On this island</p>
+                <ul className="legend">
+                  {terrainOf(level).map((t) => (
+                    <li key={t}>
+                      <img className="px" src={terrainPip(t)} alt="" />
+                      <span>
+                        <b>{TERRAIN_INFO[t].name}</b> {TERRAIN_INFO[t].line(level)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {level.star && (
+              <p className={`star-goal ${starNow ? 'got' : ''}`}>
+                <span className="star-icon" aria-hidden="true" />
+                Bonus: {STAR_GOALS[level.star]}
+              </p>
+            )}
             <button className="nine btn gold big" onClick={() => setHelp(false)}>
               Got it
             </button>

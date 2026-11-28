@@ -163,7 +163,14 @@ export type SlimePose = {
   angry?: boolean;
   /** A paper crown: the mirror, which does the opposite of your move. */
   paper?: boolean;
+  /** A lit fuse on top: the bomb, before it has gone off. */
+  fuse?: boolean;
+  /** Which frame of the fuse's spark to show. */
+  spark?: number;
 };
+
+/** The bomb's colours: soot and slate, whatever its place in the line-up. */
+export const BOMB: Ramp = { o: '#140f1f', d: '#2c2540', b: '#4a4066', l: '#7c6f9e', w: '#c4b8e0', cheek: '#5a4d7a', name: 'Bomb' };
 
 /** Draws a slime standing on (cx, footY): footY is the bottom row of the sprite. */
 export const drawSlime = (ctx: Ctx, cx: number, footY: number, ramp: Ramp, pose: SlimePose) => {
@@ -172,6 +179,15 @@ export const drawSlime = (ctx: Ctx, cx: number, footY: number, ramp: Ramp, pose:
   const x = Math.round(cx - w / 2);
   const y = Math.round(footY) - f.rows.length + 1;
   drawRows(ctx, f.rows, x, y, { o: ramp.o, d: ramp.d, b: ramp.b, l: ramp.l, w: ramp.w });
+  if (pose.fuse) {
+    // A short fuse out of the top, and its spark.
+    const fx = x + Math.floor(w / 2);
+    put(ctx, fx, y - 3, INK, 1, 3);
+    put(ctx, fx + 1, y - 4, INK);
+    const s = (pose.spark ?? 0) % 2;
+    put(ctx, fx + 1 + s, y - 6 + s, '#ffd23f');
+    put(ctx, fx + 2 - s, y - 5, '#ffffff');
+  }
 
   const lx = Math.max(-1, Math.min(1, Math.round(pose.lookX)));
   const ly = Math.max(0, Math.min(1, Math.round(pose.lookY)));
@@ -303,4 +319,14 @@ export const slimeIcon = (ramp: Ramp, face: Face, crown = false, look: Partial<S
 
 /** How each kind of foe looks, so the island, the legend and the editor agree. */
 export const kindLook = (kind: FoeKind | undefined): Partial<SlimePose> =>
-  kind === 'chaser' ? { angry: true } : kind === 'dodger' ? { face: 'scared' } : kind === 'mirror' ? { paper: true } : kind === 'sleeper' ? { blink: true } : {};
+  kind === 'chaser'
+    ? { angry: true }
+    : kind === 'dodger'
+      ? { face: 'scared' }
+      : kind === 'mirror'
+        ? { paper: true }
+        : kind === 'sleeper'
+          ? { blink: true }
+          : kind === 'bomb'
+            ? { fuse: true }
+            : {};

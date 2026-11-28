@@ -1,7 +1,7 @@
 // Renders the catalog stills with the game's own renderer (src/client/brand.ts):
 //   npx vite build --config demo/vite.config.ts && node marketing/render.mjs
 // Writes marketing/icon.png (1024 x 1024), featuring.png (1500 x 1000), tile.png (1760 x 800)
-// and backdrop.png (behind the video), and copies the icon to assets/icon.png for devvit.json.
+// backdrop.png (behind the video), video-card.png (opens and closes it), and copies the icon to assets/icon.png for devvit.json.
 import { createServer } from 'node:http';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
@@ -30,7 +30,7 @@ const page = await browser.newPage({ viewport: { width: 1960, height: 1100 }, de
 page.on('pageerror', (e) => console.log('pageerror:', e.message));
 await page.goto(`http://127.0.0.1:${server.address().port}/brand.html`);
 await page.waitForSelector('body[data-ready="1"]');
-for (const [id, file] of [['icon-large', 'icon'], ['featuring', 'featuring'], ['tile', 'tile'], ['backdrop', 'backdrop']])
+for (const [id, file] of [['icon-large', 'icon'], ['featuring', 'featuring'], ['tile', 'tile'], ['backdrop', 'backdrop'], ['video-card', 'video-card']])
   await page.locator(`#${id}`).screenshot({ path: join(here, `${file}.png`) });
 await browser.close();
 server.close();

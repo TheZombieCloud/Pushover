@@ -4,12 +4,13 @@ A daily push-'em-off puzzle for Reddit on Devvit Web. You're a slime on a floati
 
 ## The foes
 
-Each foe is one of four kinds, and its kind decides its move every turn (`movesAt` in `src/shared/sim.ts`):
+Each foe is one of five kinds, and its kind decides its move every turn (`movesAt` in `src/shared/sim.ts`):
 
 - **Chaser** (scowl) charges at you. If a hole or an edge is in the way it comes round.
 - **Dodger** (worried) moves to the spot with the most grass around it that is also far from you, so it never backs up against an edge.
 - **Mirror** (paper crown) makes the opposite of your move at the same moment. It is the only kind that reacts to your aim; the others decide from where everyone stands as the turn starts.
 - **Sleeper** never moves.
+- **Bomb** (dark, with a lit fuse) never moves. The first time anything hits it hard enough, it goes off: every slime within 36 px is thrown straight away from it, harder the closer it is (`collide`). It goes off once per run; after that it is an ordinary slime to push off.
 
 No foe ever slides itself off the island or over a hole. They only leave when pushed. The "?" button on the play screen lists the kinds on the island, one line each.
 
@@ -18,11 +19,12 @@ Aim is free: drag anywhere from your slime for any of 72 directions and 6 streng
 ## How a day works
 
 - **One island a day**, the same island for every community, changing at midnight UTC. Difficulty follows the week: Monday has 2 foes in 4 turns, Sunday has 5 foes in 5 turns.
-- **Twist days.** Wednesday has **boulders**: they never move and everything bounces off them. Friday is **frozen**: on ice the same push carries about 1.75 times as far. Sunday has both. The title card names the twist and gives its rule in one line.
+- **A rule for each day.** Tuesday has **bumpers**: small round pads that reflect a slime and add speed, so it always leaves faster than it came. Wednesday has **boulders**: they never move and everything bounces off them. Thursday has **cracked grass** (`%` in the shape): at the end of a turn, every cracked cell a slime slid over falls away as a square hole, unless a slime is standing on it, in which case it goes once they leave (`endTurn`). Friday is **frozen** (the same push carries about 1.75 times as far) with **fences**: rails along straight stretches of coast that bounce slimes back. Saturday has **wind** from one of eight directions, a small push each tick on anything moving, so every slide bends (the arrows bend with it), and a **bomb**. Sunday has boulders, ice and a bomb. Monday has no extra rule. The title card names the day's rules and gives each in one line.
+- **Bonus star.** Each daily island has one extra goal, chosen when the pool is built: "push two off with one push" if the solver's own line does that, otherwise "clear it with a turn to spare". The server checks it when it replays a run (`runLevel`) and keeps it once earned. It is shown on the title card and the results sheet and never changes the score or the leaderboard.
 - **The goal is always every foe.** Each daily island is kept only if a beam-search solver can push every foe off, so the top score is always within reach.
 - **Unlimited runs.** Your best run counts, with fewer runs to reach it as the tiebreak. Your first finished run is kept separately ("first try"), and the results sheet shows how everyone's first try went. There is no undo and no restart: every push is final, and a run counts once it's finished. To make that fair, nothing is hidden: each foe's arrow shows this turn's move, and its later moves follow from its kind.
 - **Replay.** The results sheet can play your best run back.
-- **Streaks and flair.** Finishing a run on the day's island extends your streak, shown as "Pushover · N-day streak" user flair. Flair is only set over no flair or flair Pushover set itself.
+- **Streaks, stars and flair.** Finishing a run on the day's island extends your streak. Each island's bonus star counts once toward your total (`stars:{user}`), shown on the results sheet and the feed card. Both go into your user flair (`src/shared/flair.ts`): "Pushover · N-day streak" with no stars, then the star count and a title whose wording and colour get grander with more stars (Pusher 1, Shover 10, Knockout 25, Slime Royalty 50, Island Legend 100). Flair is only set over no flair or flair Pushover set itself, and is updated on the day's first run and whenever a new star is earned.
 - **Score comments.** "Comment my score" posts from the player's own account as a reply to the one stickied scores comment the app keeps on each post (`scoreThread` in `src/server/core/post.ts`). It is never posted from the app account.
 
 ## Player-made islands
@@ -45,7 +47,7 @@ The newest player-made islands are listed on every results sheet.
 | `src/shared/solve.ts` | Beam-search solver that checks every foe can be pushed off. |
 | `src/shared/levels.json` | The daily pool: 7 weekday tiers × 52 islands, built by `npm run levels`. |
 | `src/shared/pool.ts` | Which island plays on which day. |
-| `src/shared/twist.ts` | The name and one-line rule for boulders and ice. |
+| `src/shared/twist.ts` | The names and one-line rules for an island's extras (boulders, bumpers, fences, ice, wind, cracked grass). |
 | `src/shared/validate.ts` | The rules a player-made island must pass. |
 | `src/server/core/game.ts` | Redis schema (documented at the top), replaying and recording runs, streaks, leaderboard, player-made islands. |
 | `src/server/routes/api.ts` | `/api/init`, `/api/turn`, `/api/run`, `/api/replay`, `/api/leaderboard`, `/api/share`, `/api/follow`, `/api/levels`, `/api/islands` |

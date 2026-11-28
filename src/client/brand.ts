@@ -344,6 +344,42 @@ const poster = (id: string, W: number, H: number, scale: number, kingX: number, 
 
 const H_FALL = 94;
 
+/**
+ * The featuring video's opening and closing card, 150 x 100 at 10x. Reddit crops the
+ * video to a wider shape in some places, so everything that matters sits in the middle
+ * band (rows 17 to 83): the king on his islet at the left, the name stacked at the right,
+ * and room under the name for a line of text added in the video.
+ */
+const videoCard = (id: string, cast = true) => {
+  const W = 150;
+  const H = 100;
+  const ctx = artboard(id, W, H, 10);
+  const kingX = 38;
+  const top = 33;
+  sunburst(ctx, W, H, kingX, top + 18, 54);
+  const clouds = cloudSprites();
+  ctx.drawImage(clouds[2]!, 2, 18);
+  ctx.drawImage(clouds[1]!, W - 30, 8);
+  const mid = makeBank(256, 60, 22, CLOUD_MID);
+  for (let x = -30; x < W; x += 256) ctx.drawImage(mid, x, H - 16);
+  if (cast) {
+    islet(ctx, kingX - 36, top + 23, 8, 3);
+    wordmark(ctx, 'PUSH', 81, 17, 17);
+    wordmark(ctx, 'OVER', 81, 39, 17);
+    drawCast(ctx, kingX, top);
+  }
+  const front = makeBank(256, 60, 33, CLOUD_FRONT);
+  for (let x = -90; x < W; x += 256) ctx.drawImage(front, x, H - 6);
+};
+
+const drawCast = (ctx: Ctx, kingX: number, top: number) => {
+  king(ctx, kingX, top);
+  star(ctx, kingX + 27, top + 27);
+  for (const [x, y, len] of [[kingX + 31, top + 31, 4], [kingX + 32, top + 25, 3]] as const) px(ctx, x, y, '#fff3e3', len, 1);
+  foe(ctx, kingX + 38, top + 33, FOES[0]!, 'squash', 'scared');
+  drawSlime(ctx, kingX + 22, top + 47, FOES[3]!, { frame: 'low', lookX: -1, lookY: 0, blink: false, crown: false });
+};
+
 const start = () => {
   document.body.style.margin = '0';
   document.body.style.background = '#1d1236';
@@ -352,7 +388,8 @@ const start = () => {
   icon('icon-large', 16); // 1024 x 1024, the app's own icon
   poster('featuring', 150, 100, 10, 50, 8, 11, [[10, 66, 1, 'squash'], [30, 52, 2, 'tall'], [20, H_FALL, 5, 'tall']]); // 1500 x 1000
   poster('tile', 220, 100, 8, 40, 80, 14, [[-9, 73, 1, 'idle'], [14, 60, 2, 'tall'], [44, 46, 4, 'squash'], [22, H_FALL, 5, 'tall'], [62, 80, 0, 'tall']]); // 1760 x 800
-  poster('backdrop', 150, 100, 10, 98, 0, 5, []); // 1500 x 1000, behind the video
+  videoCard('backdrop', false); // 1500 x 1000, behind the video: sky only, so the words stand clear
+  videoCard('video-card'); // 1500 x 1000, opens and closes the video
   document.body.dataset.ready = '1';
 };
 start();

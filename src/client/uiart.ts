@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { FoeKind } from '../shared/sim';
-import { FOES, GHOST, YOU, drawRows, kindLook, rockIcon, slimeIcon } from './sprites';
+import type { FoeKind, Level } from '../shared/sim';
+import { windName } from '../shared/twist';
+import { BOMB, FOES, GHOST, YOU, drawRows, kindLook, rockIcon, slimeIcon } from './sprites';
 
 /*
  * UI drawn as pixel art, from the scene's own palette, and laid out on the scene's
@@ -127,12 +128,93 @@ export const kindPip = (i: number, kind: FoeKind): string => {
   const key = `${i % FOES.length}:${kind}`;
   let url = kindPips.get(key);
   if (!url) {
-    url = slimeIcon(FOES[i % FOES.length]!, 'calm', false, kindLook(kind));
+    url = slimeIcon(kind === 'bomb' ? BOMB : FOES[i % FOES.length]!, 'calm', false, kindLook(kind));
     kindPips.set(key, url);
   }
   return url;
 };
 export const rockPip = (): string => build().rock;
+
+// ---- what's on the island, for the "?" sheet ----
+export type TerrainKind = 'rocks' | 'bumpers' | 'fences' | 'crumble' | 'ice' | 'wind';
+
+export const TERRAIN_INFO: Record<TerrainKind, { name: string; line: (l: Level) => string }> = {
+  rocks: { name: 'Boulder', line: () => 'Never moves. Everything bounces off it.' },
+  bumpers: { name: 'Bumper', line: () => 'Throws back whatever hits it, faster than it came.' },
+  fences: { name: 'Fence', line: () => 'Bounces slimes back from that stretch of edge.' },
+  crumble: { name: 'Cracked grass', line: () => 'Breaks when a slime slides over it, and falls away when the turn ends.' },
+  ice: { name: 'Ice', line: () => 'Everything slides further.' },
+  wind: { name: 'Wind', line: (l) => `Blows ${windName(l.wind ?? 0)}. Every slide drifts with it.` },
+};
+
+/** The obstacles and conditions on an island, in the order the sheet lists them. */
+export const terrainOf = (l: Level): TerrainKind[] => [
+  ...(l.rocks?.length ? (['rocks'] as const) : []),
+  ...(l.bumpers?.length ? (['bumpers'] as const) : []),
+  ...(l.fences?.length ? (['fences'] as const) : []),
+  ...(l.shape.some((row) => row.includes('%')) ? (['crumble'] as const) : []),
+  ...(l.ice ? (['ice'] as const) : []),
+  ...(l.wind !== undefined ? (['wind'] as const) : []),
+];
+
+const terrainPips = new Map<TerrainKind, string>();
+/** A small picture of each obstacle, 16 x 14 art pixels, drawn like the island. */
+export const terrainPip = (t: TerrainKind): string => {
+  const hit = terrainPips.get(t);
+  if (hit) return hit;
+  if (t === 'rocks') return rockIcon();
+  const c = document.createElement('canvas');
+  c.width = 16;
+  c.height = 14;
+  const ctx = c.getContext('2d');
+  if (!ctx) return '';
+  const dot = (x: number, y: number, color: string, w = 1, h = 1) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+  };
+  const tile = (top: string, side: string) => {
+    dot(1, 2, '#1a1026', 14, 11);
+    dot(2, 3, top, 12, 7);
+    dot(2, 10, side, 12, 2);
+  };
+  if (t === 'bumpers') {
+    for (let y = -6; y <= 6; y++)
+      for (let x = -6; x <= 6; x++) {
+        const d = x * x + y * y;
+        if (d <= 36) dot(8 + x, 7 + y, '#1a1026');
+        if (d <= 25) dot(8 + x, 7 + y, '#e03a4e');
+        if (d <= 16 && d > 9) dot(8 + x, 7 + y, '#ff9aa4');
+        if (d <= 9) dot(8 + x, 7 + y, '#c22a40');
+      }
+    dot(8, 5, '#ffd23f');
+    dot(7, 6, '#ffd23f', 3, 1);
+    dot(8, 7, '#ffd23f');
+  } else if (t === 'crumble') {
+    tile('#5bbf45', '#7a4f35');
+    for (const [x, y] of [[4, 4], [5, 5], [6, 5], [7, 6], [8, 7], [9, 7], [10, 6], [11, 5], [6, 7], [5, 8]]) dot(x!, y!, '#2f5e2b');
+  } else if (t === 'ice') {
+    tile('#e6f4ff', '#8fa6c8');
+    dot(4, 4, '#ffffff', 3, 1);
+    dot(9, 7, '#ffffff', 2, 1);
+  } else if (t === 'fences') {
+    dot(0, 7, '#1a1026', 16, 4);
+    dot(0, 8, '#c98a55', 16, 1);
+    dot(0, 9, '#8a5634', 16, 1);
+    for (const x of [2, 12]) {
+      dot(x - 1, 2, '#1a1026', 4, 11);
+      dot(x, 3, '#d99a63', 2, 9);
+      dot(x, 3, '#f2c08a', 1, 9);
+    }
+  } else {
+    for (const [x, y, len] of [[1, 3, 9], [5, 7, 10], [0, 11, 7]] as const) {
+      dot(x, y, '#1a1026', len + 1, 3);
+      dot(x + 1, y + 1, '#ffffff', len - 1, 1);
+    }
+  }
+  const url = c.toDataURL();
+  terrainPips.set(t, url);
+  return url;
+};
 
 export type Viewport = {
   /** CSS pixels per art pixel: a whole number of device pixels, so it may be a fraction here. */

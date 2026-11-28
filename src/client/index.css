@@ -559,6 +559,41 @@ img.px {
   text-align: center;
   color: var(--red);
 }
+/* The bonus star's goal: a grey star until it is earned, then gold. */
+.star-goal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(3 * var(--u));
+  text-align: center;
+  color: var(--ink-soft);
+}
+.star-goal.got {
+  color: var(--ink);
+}
+.star-icon {
+  flex: none;
+  width: calc(9 * var(--u));
+  height: calc(9 * var(--u));
+  image-rendering: pixelated;
+  background: no-repeat center / 100% url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%209%209%27%20shape-rendering%3D%27crispEdges%27%3E%3Cpath%20fill%3D%27%231a1026%27%20d%3D%27M3%200h3v3h-3zM3%201h3v3h-3zM0%202h3v3h-3zM1%202h3v3h-3zM2%202h3v3h-3zM3%202h3v3h-3zM4%202h3v3h-3zM5%202h3v3h-3zM6%202h3v3h-3zM1%203h3v3h-3zM2%203h3v3h-3zM3%203h3v3h-3zM4%203h3v3h-3zM5%203h3v3h-3zM2%204h3v3h-3zM3%204h3v3h-3zM4%204h3v3h-3zM1%205h3v3h-3zM2%205h3v3h-3zM4%205h3v3h-3zM5%205h3v3h-3zM1%206h3v3h-3zM5%206h3v3h-3z%27%2F%3E%3Cpath%20fill%3D%27%23c8bcd8%27%20d%3D%27M4%201h1v1h-1zM4%202h1v1h-1zM1%203h1v1h-1zM2%203h1v1h-1zM3%203h1v1h-1zM4%203h1v1h-1zM5%203h1v1h-1zM6%203h1v1h-1zM7%203h1v1h-1zM2%204h1v1h-1zM3%204h1v1h-1zM4%204h1v1h-1zM5%204h1v1h-1zM6%204h1v1h-1zM3%205h1v1h-1zM4%205h1v1h-1zM5%205h1v1h-1zM2%206h1v1h-1zM3%206h1v1h-1zM5%206h1v1h-1zM6%206h1v1h-1zM2%207h1v1h-1zM6%207h1v1h-1z%27%2F%3E%3C%2Fsvg%3E");
+}
+.star-goal.got .star-icon,
+.star-icon.got {
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%209%209%27%20shape-rendering%3D%27crispEdges%27%3E%3Cpath%20fill%3D%27%231a1026%27%20d%3D%27M3%200h3v3h-3zM3%201h3v3h-3zM0%202h3v3h-3zM1%202h3v3h-3zM2%202h3v3h-3zM3%202h3v3h-3zM4%202h3v3h-3zM5%202h3v3h-3zM6%202h3v3h-3zM1%203h3v3h-3zM2%203h3v3h-3zM3%203h3v3h-3zM4%203h3v3h-3zM5%203h3v3h-3zM2%204h3v3h-3zM3%204h3v3h-3zM4%204h3v3h-3zM1%205h3v3h-3zM2%205h3v3h-3zM4%205h3v3h-3zM5%205h3v3h-3zM1%206h3v3h-3zM5%206h3v3h-3z%27%2F%3E%3Cpath%20fill%3D%27%23ffd23f%27%20d%3D%27M4%201h1v1h-1zM4%202h1v1h-1zM1%203h1v1h-1zM2%203h1v1h-1zM3%203h1v1h-1zM4%203h1v1h-1zM5%203h1v1h-1zM6%203h1v1h-1zM7%203h1v1h-1zM2%204h1v1h-1zM3%204h1v1h-1zM4%204h1v1h-1zM5%204h1v1h-1zM6%204h1v1h-1zM3%205h1v1h-1zM4%205h1v1h-1zM5%205h1v1h-1zM2%206h1v1h-1zM3%206h1v1h-1zM5%206h1v1h-1zM6%206h1v1h-1zM2%207h1v1h-1zM6%207h1v1h-1z%27%2F%3E%3C%2Fsvg%3E");
+}
+/* A star count inline in a line of text. */
+.star-total {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(2 * var(--u));
+  vertical-align: middle;
+}
+/* The bonus star in the top bar while you play: grey, then gold once earned. */
+.hud-star {
+  margin-left: calc(3 * var(--u));
+  align-self: center;
+}
 
 .lb-list {
   list-style: none;

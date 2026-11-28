@@ -1,11 +1,11 @@
 import { DIR } from '../shared/dirs';
-import { BOARD_H, BOARD_W, RADIUS, groundMask, lonePath } from '../shared/sim';
+import { BOARD_H, BOARD_W, BOOM_R, BUMPER_R, CELL, COLS, groundMask, liveMask, lonePath, RADIUS } from '../shared/sim';
 import type { Level, Move, SimEvent, Spot, State } from '../shared/sim';
 import { UNDER, makeIsland } from './island';
 import { CLOUD_BACK, CLOUD_FRONT, CLOUD_MID, cloudSprites, drawSky, makeBank } from './sky';
 import { sfx } from './sound';
 import type { Bounce, Ghost } from './guide';
-import { INK, drawHand, drawRock, drawRows, drawSlime, rampFor } from './sprites';
+import { BOMB, INK, drawHand, drawRock, drawRows, drawSlime, rampFor } from './sprites';
 import type { FrameName } from './sprites';
 
 /*
@@ -173,6 +173,11 @@ const traceArrow = (ctx: Ctx, a: ArrowSpec, grow: number, frame: number) => {
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; g: number };
 type Popup = { x: number; y: number; text: string; t: number; color: string };
 type Faller = { who: number; x: number; y: number; vx: number; vy: number; t: number; behind: boolean; /** Fell into a hole in the island, not off its coast. */ hole: boolean };
+// Cracked grass: two crack patterns for one cell, alternated so the field doesn't repeat.
+// o dark crack, l the lit edge beside it.
+const CRACK_A = ['........', '..o.....', '..lo....', '...lo.o.', '....oo..', '...o....', '..o.....', '........'];
+const CRACK_B = ['........', '.....o..', '....ol..', '.o.ol...', '..oo....', '....o...', '.....o..', '........'];
+
 /** Frames a slime takes to drop out of sight down a hole. */
 const HOLE_FRAMES = 46;
 type Burst = { x: number; y: number; t: number; big: boolean };
@@ -230,6 +235,10 @@ export class Scene {
   private lastDot: ({ x: number; y: number } | undefined)[] = [];
   private squash: number[] = [];
   private shake = 0;
+  /** Cracked cells that have fallen away, as drawn. */
+  private gone: number[] = [];
+  /** Frames left on each bumper's flash after a hit. */
+  private flash: number[] = [];
   // Effects run on their own clock so they can follow the playback speed.
   private clock = 0;
   private steps = 0;
@@ -283,6 +292,15 @@ export class Scene {
     if (!redraw) return;
     this.mask = groundMask(level.shape);
     this.island = makeIsland(level.shape, !!level.ice);
+  }
+
+  /** Cracked cells that have fallen away: redraws the island with those holes. */
+  setGone(gone: number[] | undefined) {
+    const next = gone ?? [];
+    if (next.length === this.gone.length) return;
+    this.gone = [...next];
+    this.island = makeIsland(this.level.shape, !!this.level.ice, this.gone);
+    this.mask = this.gone.length ? liveMask(this.level.shape, this.gone) : groundMask(this.level.shape);
   }
 
   /** Clear everything left over from the last turn or run. */
@@ -354,8 +372,54 @@ export class Scene {
           const sp = 0.5 + Math.random() * 0.8 * (0.5 + f);
           this.particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 16, max: 16, color: k % 2 ? '#ffffff' : '#ffd23f', g: 0 });
         }
+      } else if (e.kind === 'bonk' && e.bumper) {
+        // Off a bumper: it lights up and throws gold sparks.
+        this.squash[e.who] = 0.7;
+        const bumpers = this.level.bumpers ?? [];
+        let near = 0;
+        bumpers.forEach((k, i) => {
+          const best = bumpers[near]!;
+          if ((k.x - e.x) ** 2 + (k.y - e.y) ** 2 < (best.x - e.x) ** 2 + (best.y - e.y) ** 2) near = i;
+        });
+        this.flash[near] = 10;
+        this.bursts.push({ x: e.x, y: e.y, t: 0, big: true });
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2;
+          this.particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 1.2, vy: Math.sin(a) * 1.2, life: 14, max: 14, color: k % 2 ? '#ffd23f' : '#ffffff', g: 0 });
+        }
+      } else if (e.kind === 'boom') {
+        // A bomb goes off: a big flash, smoke and sparks, and the screen jumps.
+        this.shake = Math.max(this.shake, 5);
+        this.bursts.push({ x: e.x, y: e.y, t: 0, big: true });
+        for (let k = 0; k < 22; k++) {
+          const a = (k / 22) * Math.PI * 2 + Math.random() * 0.3;
+          const sp = 0.8 + Math.random() * 1.6;
+          const color = k % 3 === 0 ? '#ffffff' : k % 3 === 1 ? '#ffd23f' : '#ff7a3a';
+          this.particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 22, max: 22, color, g: 0 });
+        }
+        for (let k = 0; k < 8; k++)
+          this.particles.push({ x: e.x + (Math.random() - 0.5) * 8, y: e.y, vx: (Math.random() - 0.5) * 0.6, vy: -0.4 - Math.random() * 0.5, life: 40, max: 40, color: k % 2 ? '#6b5d8a' : '#4a4066', g: -0.005 });
+        this.popups.push({ x: e.x, y: e.y - 18, text: 'BOOM', t: 0, color: '#ff7a3a' });
+      } else if (e.kind === 'crumble') {
+        // Cracked grass breaks up and drops away.
+        for (const c of e.cells) {
+          const cx = (c % COLS) * CELL + CELL / 2;
+          const cy = Math.floor(c / COLS) * CELL + CELL / 2;
+          for (let k = 0; k < 5; k++)
+            this.particles.push({
+              x: cx + (Math.random() - 0.5) * CELL,
+              y: cy + (Math.random() - 0.5) * CELL,
+              vx: (Math.random() - 0.5) * 0.5,
+              vy: Math.random() * 0.4,
+              life: 30,
+              max: 30,
+              color: k % 3 === 0 ? '#5a3a28' : k % 3 === 1 ? '#7a4f35' : '#4f9a3a',
+              g: 0.08,
+            });
+        }
+        this.shake = Math.max(this.shake, 1);
       } else if (e.kind === 'bonk') {
-        // Off a boulder: a small burst and a few chips of stone.
+        // Off a boulder or a fence: a small burst and a few chips.
         this.squash[e.who] = 0.5;
         this.bursts.push({ x: e.x, y: e.y, t: 0, big: false });
         for (let k = 0; k < 4; k++)
@@ -369,7 +433,7 @@ export class Scene {
             color: k % 2 ? '#c9bcb8' : '#998890',
             g: 0.08,
           });
-      } else {
+      } else if (e.kind === 'fall') {
         const hole = this.groundBelow(e.x, e.y) && this.groundAbove(e.x, e.y);
         // Off the far coast a slime drops behind the island. Down a hole it is drawn over
         // the opening, carrying on the way it was going, so it is seen going in.
@@ -495,6 +559,7 @@ export class Scene {
 
     this.drawFallers(true);
     ctx.drawImage(this.island, 0, 0);
+    this.drawCracks(input.state.trod);
     this.drawTrail();
 
     const bodies = state.bodies;
@@ -517,6 +582,9 @@ export class Scene {
       ctx.fillRect(x - k.r - 1, y + 1, k.r * 2 + 2, 1);
       ctx.fillRect(x - k.r + 1, y + 2, k.r * 2 - 2, 1);
     }
+    this.drawFences();
+    this.drawBumpers(frame);
+    if (input.arrows) this.drawBlastRings(bodies, frame);
     // A gold ring on the ground that turns slowly: yours, or whoever is being aimed.
     const you = bodies[0]!;
     const ringed = bodies[input.ring ?? 0];
@@ -569,7 +637,10 @@ export class Scene {
       const kind = i > 0 ? this.level.foes[i - 1]?.kind : undefined;
       const asleep = !moving && i > 0 && (kind ? kind === 'sleeper' : !!input.arrows && !!m && m.p === 0);
       if (input.preview) ctx.globalAlpha = 0.55;
-      drawSlime(ctx, b.x, b.y + 6, rampFor(i), {
+      const bomb = kind === 'bomb';
+      drawSlime(ctx, b.x, b.y + 6, bomb ? BOMB : rampFor(i), {
+        fuse: bomb && !b.spent,
+        spark: Math.floor(frame / 5),
         frame: pose,
         lookX: asleep ? 0 : Math.abs(lx) > 0.4 ? Math.sign(lx) : 0,
         lookY: asleep ? 0 : ly > 0.5 ? 1 : 0,
@@ -593,6 +664,7 @@ export class Scene {
     this.drawParticles();
     this.drawFallers(false);
     this.drawPopups();
+    this.drawWind(frame);
     if (input.hand) drawHand(ctx, input.hand.x, input.hand.y);
     ctx.restore();
 
@@ -633,6 +705,155 @@ export class Scene {
         from = path[path.length - 1]!;
         drawText(ctx, String(turnNo + k + 1), Math.round(from.x) - 1, Math.round(from.y) - 2, ramp.l, INK);
       });
+    }
+  }
+
+  /**
+   * Cracked grass, until it falls away: fine dark cracks over the cell. A cell a slime
+   * has already slid over (`trod`) is broken open, dark and cracked both ways, so you
+   * can see it is about to go.
+   */
+  private drawCracks(trod: number[] | undefined) {
+    const { ctx } = this;
+    const shape = this.level.shape;
+    for (let r = 0; r < shape.length; r++) {
+      const row = shape[r]!;
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] !== '%' || this.gone.includes(r * COLS + c)) continue;
+        if (trod?.includes(r * COLS + c)) {
+          px(ctx, c * CELL, r * CELL, 'rgba(60, 30, 15, 0.45)', CELL, CELL);
+          for (const pattern of [CRACK_A, CRACK_B])
+            pattern.forEach((line, y) =>
+              [...line].forEach((ch, x) => {
+                if (ch === 'o') px(ctx, c * CELL + x, r * CELL + y, '#3a2116');
+              })
+            );
+          continue;
+        }
+        const flip = (r + c) % 2 === 1;
+        const pattern = flip ? CRACK_B : CRACK_A;
+        pattern.forEach((line, y) =>
+          [...line].forEach((ch, x) => {
+            if (ch === 'o') px(ctx, c * CELL + x, r * CELL + y, '#2f5e2b');
+            else if (ch === 'l') px(ctx, c * CELL + x, r * CELL + y, '#8fd36a');
+          })
+        );
+      }
+    }
+  }
+
+  /**
+   * Bumpers: a round pad on a dark base. A red rim with a white ring, a gold star in
+   * the middle, and the whole cap turns gold for a moment when something hits it.
+   * Every so often the cap springs up and settles with a squash, and a pink ring
+   * spreads out from it, so it reads as bouncy before anything touches it. Bumpers
+   * take turns, so they never all pulse at once.
+   */
+  private drawBumpers(frame: number) {
+    const { ctx } = this;
+    const R = BUMPER_R;
+    const PERIOD = 80;
+    (this.level.bumpers ?? []).forEach((k, i) => {
+      const lit = (this.flash[i] ?? 0) > 0;
+      if (lit) this.flash[i]!--;
+      const phase = (frame + i * 29) % PERIOD;
+      // Up two, up one, down one (the squash), then at rest.
+      const lift = lit ? -2 : phase < 5 ? -2 : phase < 9 ? -1 : phase < 13 ? 1 : 0;
+      if (!lit && phase < 24) {
+        const ring = R + 2 + phase / 3;
+        const alpha = 0.75 * (1 - phase / 24);
+        const steps = Math.round(Math.PI * 2 * ring);
+        for (let s = 0; s < steps; s++) {
+          const a = (s / steps) * Math.PI * 2;
+          px(ctx, k.x + Math.cos(a) * ring, k.y + Math.sin(a) * ring * 0.6 + 1, `rgba(255, 154, 164, ${alpha.toFixed(2)})`);
+        }
+      }
+      // The base stays put.
+      for (let dy = -R - 2; dy <= R + 2; dy++)
+        for (let dx = -R - 2; dx <= R + 2; dx++) {
+          const base = dx * dx + (dy - 1) * (dy - 1) * 1.6; // squat base, a pixel lower
+          if (base <= (R + 1) * (R + 1)) px(ctx, k.x + dx, k.y + dy, base <= R * R && dy > 0 ? '#5a1a2a' : INK);
+        }
+      // The cap rides on top of it.
+      for (let dy = -R - 2; dy <= R + 2; dy++)
+        for (let dx = -R - 2; dx <= R + 2; dx++) {
+          const cap = dx * dx + (dy + 1) * (dy + 1) * 1.25; // the cap, a pixel higher
+          let color: string | null = null;
+          if (cap <= (R + 1) * (R + 1)) color = INK;
+          if (cap <= R * R) color = lit ? '#ffd23f' : '#e03a4e';
+          if (cap <= (R - 1) * (R - 1) && cap > (R - 2) * (R - 2)) color = lit ? '#ffffff' : '#ff9aa4';
+          if (cap <= (R - 2) * (R - 2)) color = lit ? '#fff3a8' : '#c22a40';
+          if (color) px(ctx, k.x + dx, k.y + dy + lift, color);
+        }
+      // A small star in the middle.
+      const sx = Math.round(k.x);
+      const sy = Math.round(k.y) - 1 + lift;
+      const star = lit ? '#ffffff' : '#ffd23f';
+      px(ctx, sx, sy - 1, star);
+      px(ctx, sx - 1, sy, star, 3, 1);
+      px(ctx, sx, sy + 1, star);
+    });
+  }
+
+  /** While you aim: a dashed orange ring round each unexploded bomb, as far as its blast reaches. */
+  private drawBlastRings(bodies: State['bodies'], frame: number) {
+    const { ctx } = this;
+    this.level.foes.forEach((f, i) => {
+      const b = bodies[i + 1];
+      if (f.kind !== 'bomb' || !b?.alive || b.spent) return;
+      // One point per pixel of the circle, in dashes that creep round slowly.
+      const steps = Math.round(Math.PI * 2 * BOOM_R);
+      for (let k = 0; k < steps; k++) {
+        if ((k + Math.floor(frame / 6)) % 8 > 4) continue;
+        const a = (k / steps) * Math.PI * 2;
+        px(ctx, b.x + Math.cos(a) * BOOM_R, b.y + Math.sin(a) * BOOM_R + 1, INK);
+        px(ctx, b.x + Math.cos(a) * BOOM_R, b.y + Math.sin(a) * BOOM_R, '#ff7a3a');
+      }
+    });
+  }
+
+  /** Fences: wooden posts with a rail between them. */
+  private drawFences() {
+    const { ctx } = this;
+    for (const f of this.level.fences ?? []) {
+      const len = Math.sqrt((f.x2 - f.x1) ** 2 + (f.y2 - f.y1) ** 2);
+      const ux = len ? (f.x2 - f.x1) / len : 0;
+      const uy = len ? (f.y2 - f.y1) / len : 0;
+      for (let t = 0; t <= len; t++) {
+        const x = f.x1 + ux * t;
+        const y = f.y1 + uy * t;
+        px(ctx, x, y - 4, INK, 1, 4);
+        px(ctx, x, y - 3, '#c98a55');
+        px(ctx, x, y - 2, '#8a5634');
+      }
+      for (let t = 0; t <= len; t += 8) {
+        const x = Math.round(f.x1 + ux * t);
+        const y = Math.round(f.y1 + uy * t);
+        px(ctx, x - 1, y - 7, INK, 4, 8);
+        px(ctx, x, y - 6, '#d99a63', 2, 6);
+        px(ctx, x, y - 6, '#f2c08a', 1, 6);
+      }
+    }
+  }
+
+  /** Wind: thin streaks drifting across the island the way it blows. */
+  private drawWind(frame: number) {
+    if (this.level.wind === undefined) return;
+    const { ctx } = this;
+    const [ux, uy] = DIR[((this.level.wind % DIR.length) + DIR.length) % DIR.length]!;
+    const vx = -uy;
+    const vy = ux;
+    for (let k = 0; k < 22; k++) {
+      const along = ((frame * 1.6 + k * 67) % 320) - 160;
+      const across = ((k * 37) % 280) - 140;
+      const x = BOARD_W / 2 + ux * along + vx * across;
+      const y = BOARD_H / 2 + uy * along + vy * across;
+      // A streak with a fading tail, two pixels thick.
+      for (let i = 0; i < 12; i++) {
+        const color = i < 4 ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.85)';
+        px(ctx, x + ux * i, y + uy * i, color);
+        px(ctx, x + ux * i + vx, y + uy * i + vy, i < 4 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.45)');
+      }
     }
   }
 

@@ -1,12 +1,13 @@
 import { context, reddit, redis } from '@devvit/web/server';
+import { playerFlair } from '../../shared/flair';
 
 /*
  * Two small ties back into the subreddit:
  *
  *   followers   hash  username -> '1' once they tapped Follow on the results sheet
- *   flair:ours  hash  username -> the streak flair text we last set for them
+ *   flair:ours  hash  username -> the flair text (streak and stars) we last set for them
  *
- * Streak flair is only ever written over flair we set ourselves (or no flair), so a
+ * Pushover's flair is only ever written over flair we set ourselves (or no flair), so a
  * flair the member picked, or a mod gave them, is never replaced.
  */
 
@@ -25,7 +26,7 @@ export const follow = async (username: string): Promise<boolean> => {
   return true;
 };
 
-export const streakFlairText = (streak: number): string => `Pushover · ${streak}-day streak`;
+
 
 /** Remove the streak flair, only if it is still the one Pushover set. */
 export const removeStreakFlair = async (username: string): Promise<void> => {
@@ -43,16 +44,18 @@ export const removeStreakFlair = async (username: string): Promise<void> => {
   await redis.hDel('flair:ours', [username]);
 };
 
-export const updateStreakFlair = async (username: string, streak: number): Promise<void> => {
+/** Set the player's flair to their stars and streak (see shared/flair.ts). */
+export const updatePlayerFlair = async (username: string, streak: number, stars: number): Promise<void> => {
   const subredditName = context.subredditName;
-  if (!subredditName || streak < 1) return;
+  const flair = playerFlair(streak, stars);
+  if (!subredditName || !flair) return;
   try {
-    const text = streakFlairText(streak);
+    const { text, backgroundColor, textColor } = flair;
     const [ours, sub] = await Promise.all([redis.hGet('flair:ours', username), reddit.getCurrentSubreddit()]);
     const current = (await sub.getUserFlair({ usernames: [username] })).users[0]?.flairText ?? '';
     if (current === text) return;
     if (current && current !== ours) return; // their own flair: leave it alone
-    await reddit.setUserFlair({ subredditName, username, text, backgroundColor: '#ffcd3c', textColor: 'dark' });
+    await reddit.setUserFlair({ subredditName, username, text, backgroundColor, textColor });
     await redis.hSet('flair:ours', { [username]: text });
   } catch (error) {
     console.warn('streak flair failed', error);

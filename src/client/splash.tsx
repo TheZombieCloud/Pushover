@@ -131,7 +131,7 @@ export const Splash = () => {
 
   if (error) return <div className="screen-msg">{error}</div>;
   if (!data) return <div className="screen-msg">…</div>;
-  const { puzzle, standing, streak, players } = data;
+  const { puzzle, standing, streak, stars, players } = data;
   const foes = puzzle.level.foes.length;
 
   return (
@@ -143,6 +143,15 @@ export const Splash = () => {
           <span className="outlined">
             {puzzle.number > 0 ? `No. ${puzzle.number} · ${dayName(puzzle.weekday)}` : 'Test island'}
             {streak > 0 && ` · ${streak}-day streak`}
+            {stars > 0 && (
+              <>
+                {' · '}
+                <span className="star-total">
+                  <span className="star-icon got" aria-hidden="true" />
+                  {stars}
+                </span>
+              </>
+            )}
           </span>
         </div>
         <div className="spacer" />

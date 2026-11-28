@@ -11,7 +11,7 @@ import type { Level, Move, State } from './sim.ts';
 /** Cells from each grass cell to the nearest sky cell (0 = sky). */
 export const edgeDistance = (shape: string[]): number[][] => {
   const dist = Array.from({ length: ROWS }, (_, r) =>
-    Array.from({ length: COLS }, (_, c) => (shape[r]?.[c] === '#' ? Infinity : 0))
+    Array.from({ length: COLS }, (_, c) => (shape[r]?.[c] === '#' || shape[r]?.[c] === '%' ? Infinity : 0))
   );
   const queue: [number, number][] = [];
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (dist[r]![c] === 0) queue.push([r, c]);
@@ -55,7 +55,8 @@ const value = (s: State, edge: number[][]) => {
   return v;
 };
 
-const keyOf = (s: State) => s.bodies.map((b) => (b.alive ? `${Math.round(b.x / 3)},${Math.round(b.y / 3)}` : 'x')).join('|');
+const keyOf = (s: State) =>
+  s.bodies.map((b) => (b.alive ? `${Math.round(b.x / 3)},${Math.round(b.y / 3)}${b.spent ? '!' : ''}` : 'x')).join('|') + (s.gone?.length ? `/${s.gone.length}` : '');
 
 export type Solution = { score: number; moves: Move[] };
 

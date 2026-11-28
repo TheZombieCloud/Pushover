@@ -17,7 +17,8 @@ import { twistOf } from '../src/shared/twist';
 import { checkLevel } from '../src/shared/validate';
 
 const LATENCY_MS = 200;
-const q = new URLSearchParams(location.search);
+// Settings come from the query string, or from the hash where a host drops the query.
+const q = new URLSearchParams(location.search || location.hash.slice(1));
 const scenario = q.get('s') ?? 'fresh';
 
 /** A real date on the requested weekday, so the tier matches. */
@@ -44,6 +45,7 @@ const earlierScore = runLevel(puzzle.level, earlier).score;
 let mine: Mine | null = scenario === 'played' ? { best: earlierScore, firstTry: Math.max(0, earlierScore - 1), runs: 3, bestAt: 2 } : null;
 let bestMoves: Move[] | null = scenario === 'played' ? earlier : null;
 let streak = scenario === 'played' ? 4 : 3;
+let stars = scenario === 'played' ? 12 : 11;
 
 // Islands "other players" made, plus any posted in this session.
 const islands: IslandLink[] = [
@@ -77,12 +79,13 @@ const init = (): InitResponse => ({
   username: 'you',
   puzzle,
   streak,
+  stars,
   players: PLAYERS,
   best: top()[0]!,
   standing: standing(),
   subreddit: 'PushoverGame',
   following: false,
-  newcomer: scenario === 'fresh' && !mine,
+  newcomer: scenario === 'fresh' && !mine && q.get('newcomer') !== '0',
 });
 
 type Reply = { status: number; body: unknown };
@@ -111,13 +114,15 @@ const handle = (path: string, body: Record<string, unknown>): Reply => {
         firstTry: prev ? prev.firstTry : result.score,
         runs,
         bestAt: improved ? runs : prev.bestAt,
+        ...(prev?.star || result.star ? { star: true } : {}),
       };
+      if (mine.star && !prev?.star) stars++;
       if (improved) bestMoves = moves;
       if (!prev) {
         streak++;
         firstTries[result.score] = (firstTries[result.score] ?? 0) + 1;
       }
-      return ok({ result, standing: standing(), streak, improved });
+      return ok({ result, standing: standing(), streak, stars, improved });
     }
     case 'replay':
       return ok({ moves: bestMoves });
@@ -231,4 +236,4 @@ const holeMove = ((): Move | null => {
 const fallMove: Move = [...AIM_MOVES].reverse().find((m) => runLevel(puzzle.level, [m]).fell) ?? STAY;
 
 // For the recorder: today's stored solution, so it can autoplay a strong run.
-Object.assign(window, { __demo: { solution: Array.from({ length: pool.turns }, (_, i) => pool.solution[i] ?? STAY), par: pool.par, foes, turns: pool.turns, kinds: new Set(puzzle.level.foes.map((f) => f.kind)).size, solveDraft, holeMove, fallMove } });
+Object.assign(window, { __demo: { solution: Array.from({ length: pool.turns }, (_, i) => pool.solution[i] ?? STAY), par: pool.par, foes, turns: pool.turns, kinds: new Set(puzzle.level.foes.map((f) => f.kind)).size, star: puzzle.level.star ?? null, solveDraft, holeMove, fallMove } });

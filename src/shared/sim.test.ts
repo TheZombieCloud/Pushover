@@ -87,13 +87,83 @@ test('on ice the same push carries further', async () => {
   for (let p = 1; p <= 6; p++) assert.ok(ice[p]! > grass[p]! * 1.5, `power ${p}`);
 });
 
-test('twist days: boulders on Wednesday, ice on Friday, both on Sunday, neither on Monday', () => {
-  const has = (tier: number, what: 'rocks' | 'ice') => POOL[tier]!.every((l) => (what === 'ice' ? l.ice === true : (l.rocks?.length ?? 0) > 0));
-  const none = (tier: number) => POOL[tier]!.every((l) => !l.ice && !l.rocks);
-  assert.ok(none(0) && none(1) && none(3) && none(5));
-  assert.ok(has(2, 'rocks') && !POOL[2]!.some((l) => l.ice));
-  assert.ok(has(4, 'ice') && !POOL[4]!.some((l) => l.rocks));
-  assert.ok(has(6, 'rocks') && has(6, 'ice'));
+test('each day has its own rule: plain Monday, bumpers, boulders, cracked grass, ice and fences, wind and a bomb, boulders ice and a bomb', () => {
+  const every = (tier: number, ok: (l: PoolLevel) => boolean) => POOL[tier]!.every(ok);
+  const cracked = (l: PoolLevel) => l.shape.some((row) => row.includes('%'));
+  const bomb = (l: PoolLevel) => l.foes.some((f) => f.kind === 'bomb');
+  const plain = (l: PoolLevel) => !l.ice && !l.rocks && !l.bumpers && !l.fences && l.wind === undefined && !cracked(l) && !bomb(l);
+  assert.ok(every(0, plain), 'Monday');
+  assert.ok(every(1, (l) => !!l.bumpers?.length && !l.rocks && !l.ice), 'Tuesday');
+  assert.ok(every(2, (l) => !!l.rocks?.length && !l.ice && !l.bumpers), 'Wednesday');
+  assert.ok(every(3, (l) => cracked(l) && !l.ice && !l.rocks), 'Thursday');
+  assert.ok(every(4, (l) => l.ice === true && !!l.fences?.length && !l.rocks), 'Friday');
+  assert.ok(every(5, (l) => l.wind !== undefined && bomb(l) && !l.ice), 'Saturday');
+  assert.ok(every(6, (l) => !!l.rocks?.length && l.ice === true && bomb(l)), 'Sunday');
+});
+
+test('every pool island has a bonus star its stored solution earns', () => {
+  for (const tier of POOL)
+    for (const l of tier) {
+      assert.ok(l.star === 'spare' || l.star === 'combo', l.id);
+      assert.equal(runLevel(l, l.solution).star, true, l.id);
+    }
+});
+
+test('a slime that hits a bumper leaves faster than it arrived', async () => {
+  const { lonePath } = await import('./sim.ts');
+  const plain = lonePath({}, { x: 0, y: 0 }, { d: 0, p: 2 });
+  const bumped = lonePath({ bumpers: [{ x: 18, y: 0 }] }, { x: 0, y: 0 }, { d: 0, p: 2 });
+  const end = bumped[bumped.length - 1]!;
+  assert.ok(end.x < 0, 'it was thrown back the way it came');
+  assert.ok(-end.x > plain[plain.length - 1]!.x - 18, 'and further than it had left to go');
+});
+
+test('a fence bounces a slime back instead of letting it over the edge', async () => {
+  const { slideEnd } = await import('./sim.ts');
+  const shape = Array.from({ length: 22 }, (_, r) => (r >= 2 && r < 20 ? '..' + '#'.repeat(18) + '..' : '.'.repeat(22)));
+  const level = { shape, you: { x: 88, y: 88 }, foes: [], turns: 1, par: 0 };
+  const east = { d: 0, p: 6 };
+  assert.equal(slideEnd(level, level.you, east), null, 'without a fence it goes over');
+  const fenced = { ...level, fences: [{ x1: 160, y1: 16, x2: 160, y2: 160 }] };
+  const end = slideEnd(fenced, fenced.you, east);
+  assert.ok(end && end.x < 160 - 7, 'with one it stays on');
+});
+
+test('wind bends a slide', async () => {
+  const { lonePath } = await import('./sim.ts');
+  const calm = lonePath({}, { x: 0, y: 0 }, { d: 0, p: 6 });
+  const windy = lonePath({ wind: 18 }, { x: 0, y: 0 }, { d: 0, p: 6 });
+  assert.equal(calm[calm.length - 1]!.y, 0);
+  assert.ok(windy[windy.length - 1]!.y > 4, 'blown south');
+});
+
+test('cracked grass falls away after a slime slides off it, and not while one stands on it', async () => {
+  const { playTurn } = await import('./sim.ts');
+  const rows = Array.from({ length: 22 }, (_, r) => (r >= 2 && r < 20 ? '..' + '#'.repeat(18) + '..' : '.'.repeat(22)));
+  rows[11] = '..' + '#'.repeat(8) + '%%%%' + '#'.repeat(6) + '..';
+  const level = { shape: rows, you: { x: 84, y: 92 }, foes: [{ x: 40, y: 40, kind: 'sleeper' as const }], turns: 3, par: 0 };
+  const state = createState(level);
+  playTurn(state, level, 0, { d: 0, p: 0 });
+  assert.equal(state.gone, undefined, 'standing still breaks nothing');
+  playTurn(state, level, 1, { d: 0, p: 4 });
+  assert.ok((state.gone?.length ?? 0) > 0, 'the tiles it slid off are gone');
+  assert.ok(state.bodies[0]!.alive, 'and it is still on the grass');
+});
+
+test('a bomb goes off when hit and throws its neighbours away', async () => {
+  const { playTurn } = await import('./sim.ts');
+  const shape = Array.from({ length: 22 }, (_, r) => (r >= 1 && r < 21 ? '.' + '#'.repeat(20) + '.' : '.'.repeat(22)));
+  const foes = [{ x: 88, y: 88, kind: 'bomb' as const }, { x: 88, y: 108, kind: 'sleeper' as const }];
+  const level = { shape, you: { x: 50, y: 88 }, foes, turns: 1, par: 0 };
+  const state = createState(level);
+  const events = playTurn(state, level, 0, { d: 0, p: 3 });
+  assert.ok(events.some((e) => e.kind === 'boom'), 'it went off');
+  assert.ok(state.bodies[1]!.spent, 'and only once');
+  assert.ok(state.bodies[2]!.y > 108 + 10, 'the sleeper beside it was blown away');
+  const quiet = { ...level, foes: foes.map((f) => ({ ...f, kind: 'sleeper' as const })) };
+  const calm = createState(quiet);
+  playTurn(calm, quiet, 0, { d: 0, p: 3 });
+  assert.equal(calm.bodies[2]!.y, 108, 'a sleeper there would not have moved');
 });
 
 test('a player-made island is accepted with a winning line and refused when tampered with', async () => {

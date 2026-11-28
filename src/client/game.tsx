@@ -18,6 +18,7 @@ import type {
   Standing,
 } from '../shared/api';
 import type { Level, Move, RunResult } from '../shared/sim';
+import { STAR_GOALS } from '../shared/sim';
 import { twistOf } from '../shared/twist';
 import { checkLevel } from '../shared/validate';
 import { call } from './api';
@@ -158,6 +159,7 @@ const Results = ({
   standing,
   last,
   streak,
+  stars,
   onAgain,
   onWatch,
   onBuild,
@@ -166,6 +168,8 @@ const Results = ({
   standing: Standing;
   last: RunResult | null;
   streak: number;
+  /** Bonus stars earned in all. */
+  stars: number;
   onAgain: () => void;
   onWatch: () => void;
   onBuild: () => void;
@@ -207,6 +211,13 @@ const Results = ({
       <p className="kicker">{last ? (shown.score === foes ? 'Clean sweep' : shown.fell ? 'You fell off' : 'Run over') : 'Your best so far'}</p>
       <h2 className="headline">{scoreLine(shown.score, foes)}</h2>
       <Pips total={foes} out={shown.score} />
+      {puzzle.level.star && (
+        <p className={`star-goal ${mine.star ? 'got' : ''}`}>
+          <span className="star-icon" aria-hidden="true" />
+          {mine.star ? 'Bonus star: ' : 'Bonus: '}
+          {STAR_GOALS[puzzle.level.star]}
+        </p>
+      )}
       <div className="stats">
         <div>
           <b>{mine.best}</b>
@@ -234,11 +245,14 @@ const Results = ({
         ) : (
           'Not ranked yet'
         )}
-        {streak > 0 && puzzle.number > 0 && (
-          <>
-            <br />
-            {streak}-day streak
-          </>
+        {((streak > 0 && puzzle.number > 0) || stars > 0) && <br />}
+        {streak > 0 && puzzle.number > 0 && `${streak}-day streak`}
+        {streak > 0 && puzzle.number > 0 && stars > 0 && ' · '}
+        {stars > 0 && (
+          <span className="star-total">
+            <span className="star-icon got" aria-hidden="true" />
+            {stars} {stars === 1 ? 'star' : 'stars'}
+          </span>
         )}
       </p>
 
@@ -306,6 +320,12 @@ const Title = ({ init, onStart }: { init: InitResponse; onStart: () => void }) =
           Push <b>{foes} slimes</b> off the island in <b>{puzzle.level.turns} turns</b>.
         </p>
         {twist && <p className="twist">{twist.rule}</p>}
+        {puzzle.level.star && (
+          <p className="star-goal">
+            <span className="star-icon" aria-hidden="true" />
+            Bonus: {STAR_GOALS[puzzle.level.star]}
+          </p>
+        )}
         <p className="soft">
           Fall off yourself and your run ends there.
           <br />
@@ -370,6 +390,7 @@ export const App = () => {
   const [standing, setStanding] = useState<Standing | null>(null);
   const [last, setLast] = useState<RunResult | null>(null);
   const [streak, setStreak] = useState(0);
+  const [stars, setStars] = useState(0);
   const [runKey, setRunKey] = useState(0);
   const [replay, setReplay] = useState<Move[] | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -384,6 +405,7 @@ export const App = () => {
         setInit(d);
         setStanding(d.standing);
         setStreak(d.streak);
+        setStars(d.stars);
         if (d.standing && !autoplay) setScreen('results');
         appReady();
       },
@@ -412,6 +434,7 @@ export const App = () => {
         journeyEnded();
         setStanding(r.standing);
         setStreak(r.streak);
+        setStars(r.stars);
       } catch (e) {
         showToast((e as Error).message);
       }
@@ -574,7 +597,7 @@ export const App = () => {
       )}
       {screen === 'results' && standing && (
         <div className="overlay">
-          <Results init={init} standing={standing} last={last} streak={streak} onAgain={again} onWatch={watch} onBuild={build} />
+          <Results init={init} standing={standing} last={last} streak={streak} stars={stars} onAgain={again} onWatch={watch} onBuild={build} />
         </div>
       )}
     </Play>

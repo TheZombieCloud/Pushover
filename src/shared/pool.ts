@@ -43,5 +43,9 @@ export const playable = (l: PoolLevel): Level => ({
   turns: l.turns,
   par: l.par,
   ...(l.rocks ? { rocks: l.rocks } : {}),
+  ...(l.bumpers ? { bumpers: l.bumpers } : {}),
+  ...(l.fences ? { fences: l.fences } : {}),
   ...(l.ice ? { ice: true } : {}),
+  ...(l.wind !== undefined ? { wind: l.wind } : {}),
+  ...(l.star ? { star: l.star } : {}),
 });

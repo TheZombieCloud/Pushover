@@ -20,6 +20,8 @@ export type Mine = {
   runs: number;
   /** Runs it took to reach your best. */
   bestAt: number;
+  /** You have met the island's bonus goal on some run. */
+  star?: boolean;
 };
 
 export type LeaderboardRow = {
@@ -45,6 +47,8 @@ export type InitResponse = {
   username: string | null;
   puzzle: Puzzle;
   streak: number;
+  /** How many islands' bonus stars you have earned in all. */
+  stars: number;
   players: number;
   best: LeaderboardRow | null;
   standing: Standing | null;
@@ -55,7 +59,7 @@ export type InitResponse = {
 };
 
 export type RunRequest = { moves: Move[] };
-export type RunResponse = { result: RunResult; standing: Standing; streak: number; improved: boolean };
+export type RunResponse = { result: RunResult; standing: Standing; streak: number; stars: number; improved: boolean };
 export type TurnRequest = { moves: Move[] };
 export type LeaderboardResponse = { rows: LeaderboardRow[]; you: LeaderboardRow | null };
 export type ShareResponse = { ok: true; commentUrl: string | null };

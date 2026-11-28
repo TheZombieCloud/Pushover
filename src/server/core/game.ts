@@ -13,11 +13,12 @@ import { DAY_MS, dailyNumber, isDailyId, todayId } from './days';
  *
  *   puzzle:{pid}       hash    level (JSON Level), number, weekday, by
  *   post:{postId}      string  pid this post plays
- *   me:{pid}:{user}    hash    best, firstTry, runs, bestAt, bestMoves (JSON)
+ *   me:{pid}:{user}    hash    best, firstTry, runs, bestAt, bestMoves (JSON), star ('1' once earned)
  *   lb:{pid}           zset    user -> (SCORE_CAP - best) * 1e6 + bestAt   (ascending = best)
  *   first:{pid}        hash    score -> players whose first finished run scored that
  *   streak:{user}      hash    last (day id), count
  *   pushed:{user}      string  when this player last started a run on any island (ms)
+ *   stars:{user}       string  how many islands' bonus stars this player has earned
  *
  * Player-made islands (pid = u-<time>-<random>, stored as a puzzle like any other):
  *
@@ -94,7 +95,7 @@ const meKey = (pid: string, user: string) => `me:${pid}:${user}`;
 export const getMine = async (pid: string, user: string): Promise<Mine | null> => {
   const h = await redis.hGetAll(meKey(pid, user));
   if (!h.runs) return null;
-  return { best: Number(h.best), firstTry: Number(h.firstTry), runs: Number(h.runs), bestAt: Number(h.bestAt) };
+  return { best: Number(h.best), firstTry: Number(h.firstTry), runs: Number(h.runs), bestAt: Number(h.bestAt), ...(h.star === '1' ? { star: true } : {}) };
 };
 
 export const parseMoves = (raw: unknown, level: Level): Move[] | null => {
@@ -104,7 +105,7 @@ export const parseMoves = (raw: unknown, level: Level): Move[] | null => {
 };
 
 export type RecordOutcome =
-  | { ok: true; result: RunResult; mine: Mine; improved: boolean; first: boolean }
+  | { ok: true; result: RunResult; mine: Mine; improved: boolean; first: boolean; newStar: boolean }
   | { ok: false; error: string };
 
 export const recordRun = async (puzzle: Puzzle, user: string, moves: Move[]): Promise<RecordOutcome> => {
@@ -120,12 +121,14 @@ export const recordRun = async (puzzle: Puzzle, user: string, moves: Move[]): Pr
     firstTry: prev ? prev.firstTry : result.score,
     runs,
     bestAt: improved ? runs : prev.bestAt,
+    ...(prev?.star || result.star ? { star: true } : {}),
   };
   await redis.hSet(meKey(puzzle.id, user), {
     best: String(mine.best),
     firstTry: String(mine.firstTry),
     runs: String(mine.runs),
     bestAt: String(mine.bestAt),
+    ...(mine.star ? { star: '1' } : {}),
     ...(improved ? { bestMoves: JSON.stringify(moves) } : {}),
   });
   if (improved) await redis.zAdd(`lb:${puzzle.id}`, { member: user, score: (SCORE_CAP - mine.best) * RANK_STEP + mine.bestAt });
@@ -133,8 +136,14 @@ export const recordRun = async (puzzle: Puzzle, user: string, moves: Move[]): Pr
     await redis.hIncrBy(`first:${puzzle.id}`, String(result.score), 1);
     if (isDailyId(puzzle.id)) await bumpStreak(user, puzzle.id);
   }
-  return { ok: true, result, mine, improved, first: !prev };
+  // Each island's star counts once toward the player's total.
+  const newStar = !!mine.star && !prev?.star;
+  if (newStar) await redis.incrBy(`stars:${user}`, 1);
+  return { ok: true, result, mine, improved, first: !prev, newStar };
 };
+
+/** How many islands' bonus stars this player has earned. */
+export const getStars = async (user: string): Promise<number> => Number((await redis.get(`stars:${user}`)) ?? 0) || 0;
 
 /** The moves of your best run, to watch again. */
 export const getBestMoves = async (pid: string, user: string): Promise<Move[] | null> => {

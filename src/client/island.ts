@@ -1,4 +1,4 @@
-import { BOARD_H, BOARD_W, groundMask } from '../shared/sim';
+import { BOARD_H, BOARD_W, groundMask, liveMask } from '../shared/sim';
 import { drawRows, spriteSize } from './sprites';
 
 /*
@@ -154,7 +154,8 @@ const px = (ctx: Ctx, x: number, y: number, color: string) => {
   ctx.fillRect(x, y, 1, 1);
 };
 
-export const makeIsland = (shape: string[], ice = false): HTMLCanvasElement => {
+/** `gone`: cracked cells that have fallen away, drawn as square holes. */
+export const makeIsland = (shape: string[], ice = false, gone: number[] = []): HTMLCanvasElement => {
   const theme = ice ? ICE : GRASS;
   const ROCK = theme.rock;
   const W = BOARD_W;
@@ -166,7 +167,7 @@ export const makeIsland = (shape: string[], ice = false): HTMLCanvasElement => {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('2D canvas unavailable');
 
-  const mask = groundMask(shape);
+  const mask = gone.length ? liveMask(shape, gone) : groundMask(shape);
   const g = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < TOP && mask[y * W + x] === 1;
 
   // --- how far each top pixel is from the island's edge (two-pass chamfer).

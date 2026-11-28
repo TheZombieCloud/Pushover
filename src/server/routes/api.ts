@@ -20,6 +20,7 @@ import {
   getBestMoves,
   getMine,
   getPuzzle,
+  getStars,
   getStreak,
   isNewcomer,
   markPushed,
@@ -37,7 +38,7 @@ import {
 import { journeyRoutes, trackEnd, trackTurn } from '../core/journey';
 import { createIslandPost, scoreThread } from '../core/post';
 import { count, countRun } from '../core/stats';
-import { follow, isFollowing, updateStreakFlair } from '../core/social';
+import { follow, isFollowing, updatePlayerFlair } from '../core/social';
 
 export const api = new Hono();
 
@@ -56,11 +57,12 @@ api.get('/init', async (c) => {
   await count(puzzle.id, c.req.query('from') === 'card' ? 'views' : 'opens');
   const [players, leaders] = await Promise.all([playerCount(puzzle.id), leaderboard(puzzle.id, 0, 0)]);
   const base = { username, puzzle, players, best: leaders[0] ?? null, subreddit: context.subredditName ?? '' };
-  if (!username) return c.json<InitResponse>({ ...base, streak: 0, standing: null, following: false, newcomer: true });
-  const [mine, streak, following] = await Promise.all([getMine(puzzle.id, username), getStreak(username), isFollowing(username)]);
+  if (!username) return c.json<InitResponse>({ ...base, streak: 0, stars: 0, standing: null, following: false, newcomer: true });
+  const [mine, streak, stars, following] = await Promise.all([getMine(puzzle.id, username), getStreak(username), getStars(username), isFollowing(username)]);
   return c.json<InitResponse>({
     ...base,
     streak,
+    stars,
     following,
     standing: mine ? await standing(puzzle, username, mine) : null,
     newcomer: await isNewcomer(username, mine),
@@ -94,12 +96,13 @@ api.post('/run', async (c) => {
   await trackEnd(c, puzzle, out.result);
   // A player's best only improves to a full clear once: that run is their first clear.
   await countRun(puzzle, out.result, out.improved && out.result.score === puzzle.level.foes.length ? out.mine.runs : null);
-  const streak = await getStreak(username);
-  if (out.first && puzzle.number > 0) await updateStreakFlair(username, streak);
+  const [streak, stars] = await Promise.all([getStreak(username), getStars(username)]);
+  if ((out.first && puzzle.number > 0) || out.newStar) await updatePlayerFlair(username, streak, stars);
   return c.json<RunResponse>({
     result: out.result,
     standing: await standing(puzzle, username, out.mine),
     streak,
+    stars,
     improved: out.improved,
   });
 });

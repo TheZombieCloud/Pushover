@@ -7,7 +7,7 @@ import { removeStreakFlair } from './social';
  * "Delete my data": everything this subreddit's Pushover stores about one player.
  *
  *   me:{day}:{user} and their leaderboard place      every daily since the first
- *   streak:{user}, avatar:{user}, pushed:{user}
+ *   streak:{user}, avatar:{user}, pushed:{user}, stars:{user}
  *   followers, flair:ours                             their entry
  *   their user flair, only if it's the streak flair Pushover set
  *
@@ -26,6 +26,6 @@ export const deleteUserData = async (user: string): Promise<void> => {
   }
 
   await removeStreakFlair(user);
-  await redis.del(`streak:${user}`, `avatar:${user}`, `pushed:${user}`);
+  await redis.del(`streak:${user}`, `avatar:${user}`, `pushed:${user}`, `stars:${user}`);
   await redis.hDel('followers', [user]);
 };

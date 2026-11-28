@@ -52,14 +52,15 @@ if (!pick) throw new Error('no island cleared in two pushes');
 
 const page = await context.newPage();
 await page.goto(pathToFileURL(join(here, 'video.html')).href);
-await page.evaluate((url) => window.V.load(url), `${base}/game.html?s=fresh&day=${pick.day}&week=${pick.week}`);
+// newcomer=0: no first-time hand or preview, so the video shows plain play.
+await page.evaluate((url) => window.V.load(url), `${base}/game.html?s=fresh&newcomer=0&day=${pick.day}&week=${pick.week}`);
 const game = page.frameLocator('#game');
 await game.getByRole('button', { name: /^Play$/ }).waitFor();
 await page.evaluate(() => document.fonts.ready);
 const frame = page.frames().find((f) => f.url().includes('game.html'));
-// Behind the poster: start the run and let the first-time hand finish its demonstration.
+// Behind the poster: start the run.
 await game.getByRole('button', { name: /^Play$/ }).evaluate((el) => el.click()); // the poster is on top, so no pointer click
-await page.waitForTimeout(3800);
+await page.waitForTimeout(1500);
 
 // Board coordinates to page coordinates: the game publishes its board (data-board),
 // and the frame is drawn at 1.5x inside the card.
@@ -118,7 +119,7 @@ cdp.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
 });
 await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 92, maxWidth: W, maxHeight: H });
 
-await page.waitForTimeout(1100); // the poster
+await page.waitForTimeout(1500); // the poster
 await page.evaluate(() => window.V.open());
 await page.waitForTimeout(700);
 await page.evaluate(() => window.V.say('DRAG', 'TO AIM'));

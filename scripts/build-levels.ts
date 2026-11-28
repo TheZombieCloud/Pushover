@@ -3,7 +3,10 @@
 //   npm run levels
 //
 // Seven tiers, one per weekday (Monday easiest, Sunday hardest), 52 islands each.
-// Three days have a twist: Wednesday has boulders, Friday is frozen, Sunday is both.
+// Every day but Monday has a rule of its own: Tuesday bumpers, Wednesday boulders,
+// Thursday cracked grass, Friday ice and fences, Saturday wind and a bomb, Sunday
+// boulders, ice and a bomb. Each island also gets a bonus star: two off with one push
+// when the solver's line has such a push, otherwise clearing it with a turn to spare.
 // Each candidate is generated from a seed and solved by beam search. It is kept only
 // if every foe can be pushed off with turns to spare: the solver has to clear the
 // island in `spare` fewer turns than the player gets, so there is room for a wasted
@@ -15,23 +18,25 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirFor } from '../src/shared/dirs.ts';
 import { generate } from '../src/shared/gen.ts';
+import type { GenOptions } from '../src/shared/gen.ts';
 import { solve } from '../src/shared/solve.ts';
-import { AIM_MOVES, STAY, cloneState, createState, outs, playTurn, youFell } from '../src/shared/sim.ts';
+import { AIM_MOVES, STAY, cloneState, createState, outs, playTurn, runLevel, youFell } from '../src/shared/sim.ts';
 import type { Level, Move, State } from '../src/shared/sim.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PER_TIER = Number(process.env.PER_TIER ?? 52);
 
-type Tier = { day: string; foes: number; turns: number; spare: number; plan?: boolean; rocks?: [number, number]; ice?: boolean };
+type Tier = GenOptions & { day: string; spare: number; plan?: boolean };
 const TIERS: Tier[] = [
   { day: 'Mon', foes: 2, turns: 4, spare: 2 },
-  { day: 'Tue', foes: 3, turns: 4, spare: 2 },
+  { day: 'Tue', foes: 3, turns: 4, spare: 2, bumpers: [2, 3] },
   { day: 'Wed', foes: 3, turns: 4, spare: 2, rocks: [2, 4] },
-  { day: 'Thu', foes: 4, turns: 5, spare: 2 },
-  { day: 'Fri', foes: 4, turns: 5, spare: 1, ice: true },
-  { day: 'Sat', foes: 5, turns: 5, spare: 1 },
-  { day: 'Sun', foes: 5, turns: 5, spare: 1, plan: true, rocks: [2, 3], ice: true },
+  { day: 'Thu', foes: 4, turns: 5, spare: 2, crumble: true },
+  { day: 'Fri', foes: 4, turns: 5, spare: 1, ice: true, fences: [2, 3] },
+  { day: 'Sat', foes: 5, turns: 5, spare: 1, wind: true, bombs: 1 },
+  { day: 'Sun', foes: 5, turns: 5, spare: 1, plan: true, rocks: [2, 3], ice: true, bombs: 1 },
 ];
+const genOptions = ({ day: _day, spare: _spare, plan: _plan, ...opt }: Tier): GenOptions => opt;
 
 /** A way of playing that needs no thought: one rule, applied every turn. */
 type Habit = (level: Level, state: State, turn: number) => Move;
@@ -87,7 +92,7 @@ for (const [ti, tier] of TIERS.entries()) {
   while (kept.length < PER_TIER) {
     seed++;
     tried++;
-    const raw = generate(seed, { foes: tier.foes, turns: tier.turns, ...(tier.rocks ? { rocks: tier.rocks } : {}), ...(tier.ice ? { ice: true } : {}) });
+    const raw = generate(seed, genOptions(tier));
     if (!raw) continue;
     // Solve it in fewer turns than the player will get.
     const best = solve({ ...raw, turns: tier.turns - tier.spare }, 24);
@@ -95,7 +100,9 @@ for (const [ti, tier] of TIERS.entries()) {
     // One push that clears everything is no puzzle, even on a Monday.
     if (best.moves.length < 2) continue;
     if (tier.plan && (solve(raw, 1).score >= tier.foes || HABITS.some((h) => playHabit(raw, h) >= tier.foes))) continue;
-    const level: Level = { ...raw, par: best.score };
+    // The bonus star: a double knock-off if the solver's line has one, else a spare turn.
+    const combo = runLevel({ ...raw, star: 'combo' }, best.moves).star === true;
+    const level: Level = { ...raw, par: best.score, star: combo ? 'combo' : 'spare' };
     const rate = 0;
     kept.push({ id: `${tier.day.toLowerCase()}-${seed}`, tier: ti, rate, ...level, solution: best.moves });
   }

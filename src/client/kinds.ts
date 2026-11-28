@@ -6,4 +6,5 @@ export const KIND_INFO: Record<FoeKind, { name: string; line: string }> = {
   dodger: { name: 'Dodger', line: 'Keeps away from you and from the edge.' },
   mirror: { name: 'Mirror', line: 'Does the opposite of your move.' },
   sleeper: { name: 'Sleeper', line: 'Never moves.' },
+  bomb: { name: 'Bomb', line: 'Never moves. Hit it and it blasts everyone near it away.' },
 };
